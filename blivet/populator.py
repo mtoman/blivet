@@ -392,7 +392,8 @@ class Populator(object):
 
     def addUdevPartitionDevice(self, info, disk=None):
         name = udev.device_get_name(info)
-        log_method_call(self, name=name)
+        uuid = udev.device_get_partition_uuid(info)
+        log_method_call(self, name=name, uuid=uuid)
         sysfs_path = udev.device_get_sysfs_path(info)
 
         if name.startswith("md"):
@@ -454,6 +455,7 @@ class Populator(object):
         device = None
         try:
             device = PartitionDevice(name, sysfsPath=sysfs_path,
+                                     uuid=uuid,
                                      major=udev.device_get_major(info),
                                      minor=udev.device_get_minor(info),
                                      exists=True, parents=[disk])
@@ -750,6 +752,7 @@ class Populator(object):
 
     def handleUdevDiskLabelFormat(self, info, device):
         disklabel_type = udev.device_get_disklabel_type(info)
+        disklabel_uuid = udev.device_get_disklabel_uuid(info)
         log_method_call(self, device=device.name, label_type=disklabel_type)
         # if there is no disklabel on the device
         # blkid doesn't understand dasd disklabels, so bypass for dasd
@@ -786,6 +789,7 @@ class Populator(object):
         try:
             fmt = formats.getFormat("disklabel",
                                     device=device.path,
+                                    uuid=disklabel_uuid,
                                     exists=True)
         except InvalidDiskLabelError as e:
             log.info("no usable disklabel on %s", device.name)
