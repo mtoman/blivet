@@ -902,6 +902,14 @@ class BTRFS(FS):
         # Don't try to mount it if there's no mountpoint.
         return self.mountpoint or kwargs.get("mountpoint")
 
+    @property
+    def containerUUID(self):
+        return self.volUUID
+
+    @containerUUID.setter
+    def containerUUID(self, uuid):
+        self.volUUID = uuid
+
 register_device_format(BTRFS)
 
 
