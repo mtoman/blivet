@@ -69,7 +69,7 @@ class NFSDevice(StorageDevice, NetworkStorageDevice):
         """ Destroy the device. """
         log_method_call(self, self.name, status=self.status)
 
-    def updateSize(self):
+    def updateSize(self, newsize=None):
         pass
 
     @classmethod
