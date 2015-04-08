@@ -24,6 +24,7 @@
 import os
 import importlib
 from gi.repository import BlockDev as blockdev
+from six import add_metaclass
 
 from ..util import notify_kernel
 from ..util import get_sysfs_path_by_name
@@ -33,6 +34,7 @@ from ..storage_log import log_method_call
 from ..errors import DeviceFormatError, FormatCreateError, FormatDestroyError, FormatSetupError
 from ..i18n import N_
 from ..size import Size
+from ..threads import SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
@@ -137,6 +139,7 @@ def get_device_format_class(fmt_type):
 
     return fmt
 
+@add_metaclass(SynchronizedMeta)
 class DeviceFormat(ObjectID):
     """ Generic device format.
 

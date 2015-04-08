@@ -22,6 +22,7 @@
 
 import os
 import re
+from six import add_metaclass
 
 from gi.repository import BlockDev as blockdev
 
@@ -38,12 +39,14 @@ from . import util
 from .flags import flags
 from .populator import Populator
 from .storage_log import log_method_call, log_method_return
+from .threads import SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
 
 _LVM_DEVICE_CLASSES = (LVMLogicalVolumeDevice, LVMVolumeGroupDevice)
 
+@add_metaclass(SynchronizedMeta)
 class DeviceTree(object):
     """ A quasi-tree that represents the devices in the system.
 
@@ -63,6 +66,7 @@ class DeviceTree(object):
         :class:`~.deviceaction.DeviceAction` instances can only be registered
         for leaf devices, except for resize actions.
     """
+    _unsynchronized_methods = ["processActions"]
 
     def __init__(self, conf=None, passphrase=None, luksDict=None,
                  iscsi=None, dasd=None):

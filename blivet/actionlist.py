@@ -21,6 +21,7 @@
 #
 
 import copy
+from six import add_metaclass
 
 from .deviceaction import ActionCreateDevice, ActionDestroyDevice
 from .deviceaction import action_type_from_string, action_object_from_string
@@ -29,11 +30,15 @@ from .devices import PartitionDevice
 from .errors import DiskLabelCommitError, StorageError
 from .flags import flags
 from . import tsort
+from .threads import blivet_lock, SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
 
+@add_metaclass(SynchronizedMeta)
 class ActionList(object):
+    _unsynchronized_methods = ['process']
+
     def __init__(self):
         self._actions = []
         self._completed_actions = []
@@ -279,7 +284,10 @@ class ActionList(object):
 
         for action in self._actions[:]:
             log.info("executing action: %s", action)
-            if not dryRun:
+            if dryRun:
+                continue
+
+            with blivet_lock:
                 try:
                     action.execute(callbacks)
                 except DiskLabelCommitError:

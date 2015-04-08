@@ -28,10 +28,12 @@ class FormatsTestCase(unittest.TestCase):
             self.assertIs(formats.getFormat(name).__class__,
                formats.DeviceFormat if format_pairs[name] is None else format_pairs[name])
         ## Consecutively constructed DeviceFormat objects have consecutive ids
+        ## that increment by two because each instance contains an instance of
+        ## StorageEventSychronizer, which also inherits from ObjectID.
         names = [key for key in format_pairs.keys() if format_pairs[key] is not None]
         objs = [formats.getFormat(name) for name in names]
         ids = [obj.id for obj in objs]
-        self.assertEqual(ids, list(range(ids[0], ids[0] + len(ids))))
+        self.assertEqual(ids, list(range(ids[0], ids[0] + 2*len(ids), 2)))
 
         ## Copy or deepcopy should preserve the id
         self.assertEqual(ids, [copy.copy(obj).id for obj in objs])

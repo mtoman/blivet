@@ -26,6 +26,7 @@ import shutil
 import pprint
 import copy
 import parted
+from six import add_metaclass
 
 from gi.repository import BlockDev as blockdev
 
@@ -50,6 +51,7 @@ from .flags import flags
 from .storage_log import log_exception_info, log_method_call
 from .i18n import _
 from .size import Size
+from .threads import SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
@@ -66,6 +68,7 @@ def parted_exn_handler(exn_type, exn_options, exn_msg):
         ret = parted.EXCEPTION_RESOLVE_YES
     return ret
 
+@add_metaclass(SynchronizedMeta)
 class Populator(object):
     def __init__(self, devicetree=None, conf=None, passphrase=None,
                  luksDict=None, iscsi=None, dasd=None):
