@@ -221,6 +221,20 @@ class Populator(object):
                      (udev.device_is_md(info) and
                       not udev.device_get_md_container(info))))
 
+    def _getSlaveNames(self, info):
+        """ Return a list of slave device names as found in sysfs.
+
+            :param :class:`pyudev.Device` info: the device's udev info
+            :returns: a list of slave/parent device names
+            :rtype: list of str
+        """
+        sysfs_path = udev.device_get_sysfs_path(info)
+        slave_dir = os.path.normpath("%s/slaves" % sysfs_path)
+        slave_names = []
+        if os.path.isdir(os.path.realpath(slave_dir)):
+            slave_names = os.listdir(slave_dir)
+        return slave_names
+
     def _addSlaveDevices(self, info):
         """ Add all slaves of a device, raising PopulatorError on failure.
 
@@ -232,23 +246,22 @@ class Populator(object):
         """
         name = udev.device_get_name(info)
         sysfs_path = udev.device_get_sysfs_path(info)
-        slave_dir = os.path.normpath("%s/slaves" % sysfs_path)
-        slave_names = os.listdir(slave_dir)
+        slave_names = self._getSlaveNames(info)
         slave_devices = []
         if not slave_names:
             log.error("no slaves found for %s", name)
             raise PopulatorError("no slaves found for device %s" % name)
 
+        slave_dir = os.path.normpath("%s/slaves" % sysfs_path)
         for slave_name in slave_names:
             path = os.path.normpath("%s/%s" % (slave_dir, slave_name))
             slave_info = udev.get_device(os.path.realpath(path))
 
-            # cciss in sysfs is "cciss!cXdYpZ" but we need "cciss/cXdYpZ"
-            slave_name = udev.device_get_name(slave_info).replace("!", "/")
-
             if not slave_info:
                 log.warning("unable to get udev info for %s", slave_name)
 
+            # cciss in sysfs is "cciss!cXdYpZ" but we need "cciss/cXdYpZ"
+            slave_name = udev.device_get_name(slave_info).replace("!", "/")
             slave_dev = self.getDeviceByName(slave_name)
             if not slave_dev and slave_info:
                 # we haven't scanned the slave yet, so do it now
