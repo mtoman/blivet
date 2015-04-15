@@ -284,6 +284,51 @@ class Populator(object):
 
         return slave_devices
 
+    def getUdevDeviceDisks(self, info):
+        """ Return a list of disk names used by a udev device.
+
+            :param :class:`pyudev.Device` info: the device's udev info
+            :returns: a list of the disks used by the device
+            :rtype: list of str
+
+            .. note::
+
+                cciss names are returned in blivet-compatible form, eg:
+                cciss/c0d0p1 (not cciss!c0d0p1)
+
+        """
+        name = udev.device_get_name(info)
+        sysfs_path = udev.device_get_sysfs_path(info)
+        slave_dir = os.path.normpath("%s/slaves" % sysfs_path)
+        slave_names = self._getSlaveNames(info)
+        disks = []
+
+        # cciss in sysfs is "cciss!cXdYpZ" but we need "cciss/cXdYpZ"
+        name = name.replace("!", "/")
+
+        if self.udevDeviceIsDisk(info):
+            # this should catch multipath, dmraid, &c
+            disks.append(name)
+        elif udev.device_is_partition(info):
+            disk_name = udev.device_get_partition_disk(info)
+            if disk_name:
+                disks.append(disk_name)
+        elif not slave_names:
+            # loop, sr
+            disks.append(name)
+
+        for slave_name in slave_names:
+            path = os.path.normpath("%s/%s" % (slave_dir, slave_name))
+            slave_info = udev.get_device(os.path.realpath(path))
+            if not slave_info:
+                log.warning("unable to get udev info for %s", slave_name)
+                continue
+
+            slave_disks = self.getUdevDeviceDisks(slave_info)
+            disks.extend(d for d in slave_disks if d not in disks)
+
+        return disks
+
     def addUdevLVDevice(self, info):
         name = udev.device_get_name(info)
         log_method_call(self, name=name)
