@@ -419,6 +419,45 @@ class DeviceTree(object):
         return set(d for dep in self.getDependentDevices(disk, hidden=True)
                         for d in dep.disks)
 
+    def getDiskActions(self, disks):
+        """ Return a list of actions related to the specified disk.
+
+            :keyword disk: list of disks
+            :type disk: list of :class:`~.devices.StorageDevices`
+            :returns: list of related actions
+            :rtype: list of :class:`~.deviceaction.DeviceAction`
+
+            This includes all actions on the specified disks, plus all actions
+            on disks that are in any way connected to the specified disk via
+            container devices.
+        """
+        # This is different from getRelatedDisks in that we are finding disks
+        # related by any action -- not just the current state of the devicetree.
+        related_disks = set()
+        for action in self.actions:
+            if any(action.device.dependsOn(d) for d in disks):
+                related_disks.update(action.device.disks)
+
+        # now related_disks could be a superset of disks, so go through and
+        # build a list of actions related to any disk in related_disks
+        # Note that this list preserves the ordering of the action list.
+        related_actions = [a for a in self.actions
+                            if set(a.device.disks).intersection(related_disks)]
+        return related_actions
+
+    def cancelDiskActions(self, disks):
+        """ Cancel all actions related to the specified disk.
+
+            :keyword disk: list of disks
+            :type disk: list of :class:`~.devices.StorageDevices`
+
+            This includes actions related directly and indirectly (via container
+            membership, for example).
+        """
+        actions = self.getDiskActions(disks)
+        for action in reversed(actions):
+            self.cancelAction(action)
+
     def hide(self, device):
         """ Hide the specified device.
 
@@ -462,17 +501,7 @@ class DeviceTree(object):
         if device.isDisk:
             # Cancel all actions on this disk and any disk related by way of an
             # aggregate/container device (eg: lvm volume group).
-            disks = [device]
-            related_actions = [a for a in self._actions
-                                    if a.device.dependsOn(device)]
-            for related_device in (a.device for a in related_actions):
-                disks.extend(related_device.disks)
-
-            disks = set(disks)
-            cancel = [a for a in self._actions
-                            if set(a.device.disks).intersection(disks)]
-            for action in reversed(cancel):
-                self.cancelAction(action)
+            self.cancelDiskActions([device])
 
         for d in self.getChildren(device):
             self.hide(d)
