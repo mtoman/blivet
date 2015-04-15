@@ -737,6 +737,13 @@ class Populator(object):
 
                 device.format = None
 
+        if device is None:
+            disk_names = self.getUdevDeviceDisks(info)
+            disks = [d for d in
+                        [self.devicetree.getDeviceByName(n) for n in disk_names]
+                            if d is not None]
+            self.devicetree.cancelDiskActions(disks)
+
         #
         # The first step is to either look up or create the device
         #
@@ -1365,6 +1372,8 @@ class Populator(object):
             # FIXME: this probably needs something special for disklabels
             log.debug("no type or existing type for %s, bailing", name)
             return
+
+        self.devicetree.cancelDiskActions(device.disks)
 
         # set up the common arguments for the format constructor
         format_designator = format_type
