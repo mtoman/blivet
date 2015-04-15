@@ -916,13 +916,19 @@ class Populator(object):
             log.warning("luks device %s already in the tree",
                         device.format.mapName)
 
-    def handleVgLvs(self, vg_device):
+    def updateLVs(self, vg_device):
         """ Handle setup of the LV's in the vg_device. """
         vg_name = vg_device.name
         lv_info = dict((k, v) for (k, v) in iter(self.devicetree.lvInfo.items())
                                 if v.vg_name == vg_name)
 
         self.names.extend(n for n in lv_info.keys() if n not in self.names)
+
+        for lv_device in vg_device.lvs[:]:
+            if lv_device.name not in lv_info:
+                log.info("lv %s seems to have been removed", lv_device.name)
+                self.devicetree.cancelDiskActions(vg_device.disks)
+                self.devicetree._removeDevice(lv_device)
 
         if not vg_device.complete:
             log.warning("Skipping LVs for incomplete VG %s", vg_name)
@@ -968,9 +974,17 @@ class Populator(object):
             lv_kwargs = {}
             name = "%s-%s" % (vg_name, lv_name)
 
-            if self.getDeviceByName(name):
+            lv_device = self.devicetree.getDeviceByName(name)
+            if lv_device:
                 # some lvs may have been added on demand below
                 log.debug("already added %s", name)
+                if lv_size != lv_device.currentSize:
+                    # lvresize can operate on an inactive lv, in which case
+                    # the only notification we will receive is a change uevent
+                    # for the pv(s)
+                    lv_device.updateSize(newsize=lv_size)
+                    self.devicetree.cancelDiskActions(vg_device.disks)
+
                 return
 
             if lv_attr[0] in 'Ss':
@@ -1056,6 +1070,7 @@ class Populator(object):
 
             lv_dev = self.getDeviceByUuid(lv_uuid)
             if lv_dev is None:
+                self.devicetree.cancelDiskActions(vg_device.disks)
                 lv_device = lv_class(lv_name, parents=lv_parents,
                                      uuid=lv_uuid, size=lv_size,segType=lv_type,
                                      exists=True, **lv_kwargs)
@@ -1143,7 +1158,7 @@ class Populator(object):
                                              exists=True)
             self.devicetree._addDevice(vg_device)
 
-        self.handleVgLvs(vg_device)
+        self.updateLVs(vg_device)
 
     def handleUdevMDMemberFormat(self, info, device):
         # pylint: disable=unused-argument
