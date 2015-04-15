@@ -190,6 +190,9 @@ class UnknownSourceDeviceError(StorageError):
 class PopulatorError(StorageError):
     pass
 
+class PopulatorLookupError(PopulatorError):
+    pass
+
 # factories
 class DeviceFactoryError(StorageError):
     pass

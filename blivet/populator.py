@@ -29,7 +29,7 @@ import parted
 
 from gi.repository import BlockDev as blockdev
 
-from .errors import CorruptGPTError, DeviceError, PopulatorError, DiskLabelScanError, DuplicateVGError, FSError, InvalidDiskLabelError, LUKSError
+from .errors import CorruptGPTError, DeviceError, DiskLabelScanError, DuplicateVGError, FSError, InvalidDiskLabelError, LUKSError, PopulatorError, PopulatorLookupError
 from .devices import BTRFSSubVolumeDevice, BTRFSVolumeDevice, BTRFSSnapShotDevice
 from .devices import DASDDevice, DMDevice, DMLinearDevice, DMRaidArrayDevice, DiskDevice
 from .devices import FcoeDiskDevice, FileDevice, LoopDevice, LUKSDevice
@@ -1462,7 +1462,7 @@ class Populator(object):
     def teardownDiskImages(self):
         """ Tear down any disk image stacks. """
         for (name, _path) in self.diskImages.items():
-            dm_device = self.getDeviceByName(name)
+            dm_device = self.getDeviceByName(name, fmt_check=False)
             if not dm_device:
                 continue
 
@@ -1613,7 +1613,17 @@ class Populator(object):
         return self.devicetree.names
 
     def getDeviceByName(self, *args, **kwargs):
-        return self.devicetree.getDeviceByName(*args, **kwargs)
+        fmt_check = kwargs.pop("fmt_check", True)
+        device = self.devicetree.getDeviceByName(*args, **kwargs)
+        if device and (not device.exists or
+                       (fmt_check and not device.format.exists)):
+            raise PopulatorLookupError()
+
+        return device
 
     def getDeviceByUuid(self, *args, **kwargs):
-        return self.devicetree.getDeviceByUuid(*args, **kwargs)
+        device = self.devicetree.getDeviceByUuid(*args, **kwargs)
+        if device and (not device.exists or not device.format.exists):
+            raise PopulatorLookupError()
+
+        return device
