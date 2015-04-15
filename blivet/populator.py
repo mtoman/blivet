@@ -29,7 +29,7 @@ import parted
 
 from gi.repository import BlockDev as blockdev
 
-from .errors import CorruptGPTError, DeviceError, DeviceTreeError, DiskLabelScanError, DuplicateVGError, FSError, InvalidDiskLabelError, LUKSError
+from .errors import CorruptGPTError, DeviceError, PopulatorError, DiskLabelScanError, DuplicateVGError, FSError, InvalidDiskLabelError, LUKSError
 from .devices import BTRFSSubVolumeDevice, BTRFSVolumeDevice, BTRFSSnapShotDevice
 from .devices import DASDDevice, DMDevice, DMLinearDevice, DMRaidArrayDevice, DiskDevice
 from .devices import FcoeDiskDevice, FileDevice, LoopDevice, LUKSDevice
@@ -222,10 +222,10 @@ class Populator(object):
                       not udev.device_get_md_container(info))))
 
     def _addSlaveDevices(self, info):
-        """ Add all slaves of a device, raising DeviceTreeError on failure.
+        """ Add all slaves of a device, raising PopulatorError on failure.
 
             :param :class:`pyudev.Device` info: the device's udev info
-            :raises: :class:`~.errors.DeviceTreeError if no slaves are found or
+            :raises: :class:`~.errors.PopulatorError if no slaves are found or
                      if we fail to add any slave
             :returns: a list of slave devices
             :rtype: list of :class:`~.StorageDevice`
@@ -237,7 +237,7 @@ class Populator(object):
         slave_devices = []
         if not slave_names:
             log.error("no slaves found for %s", name)
-            raise DeviceTreeError("no slaves found for device %s" % name)
+            raise PopulatorError("no slaves found for device %s" % name)
 
         for slave_name in slave_names:
             path = os.path.normpath("%s/%s" % (slave_dir, slave_name))
@@ -265,7 +265,7 @@ class Populator(object):
                     log.error("failure scanning device %s: could not add slave %s", name, slave_name)
                     msg = "failed to add slave %s of device %s" % (slave_name,
                                                                    name)
-                    raise DeviceTreeError(msg)
+                    raise PopulatorError(msg)
 
             slave_devices.append(slave_dev)
 
@@ -342,7 +342,7 @@ class Populator(object):
                 serial = info["DM_UUID"].split("-", 1)[1]
             except (IndexError, AttributeError):
                 log.error("multipath device %s has no DM_UUID", name)
-                raise DeviceTreeError("multipath %s has no DM_UUID" % name)
+                raise PopulatorError("multipath %s has no DM_UUID" % name)
 
             device = MultipathDevice(name, parents=slave_devices,
                                      sysfsPath=udev.device_get_sysfs_path(info),
@@ -868,13 +868,13 @@ class Populator(object):
 
                 The parent is strictly required in order to be able to add
                 some other LV that depends on it. For this reason, failure to
-                add the specified LV results in a DeviceTreeError with the
+                add the specified LV results in a PopulatorError with the
                 message string specified in the msg parameter.
 
                 :param str name: the full name of the LV (including vgname)
-                :param str msg: message to pass DeviceTreeError ctor on error
+                :param str msg: message to pass PopulatorError ctor on error
                 :returns: None
-                :raises: :class:`~.errors.DeviceTreeError` on failure
+                :raises: :class:`~.errors.PopulatorError` on failure
 
             """
             vol = self.getDeviceByName(name)
@@ -884,7 +884,7 @@ class Populator(object):
 
                 if vol is None:
                     log.error("%s: %s", msg, name)
-                    raise DeviceTreeError(msg)
+                    raise PopulatorError(msg)
 
         def addLV(lv):
             """ Instantiate and add an LV based on data from the VG. """
@@ -1242,7 +1242,7 @@ class Populator(object):
                 if parent is None:
                     log.error("failed to find parent (%d) for subvol %s",
                               parent_id, vol_path)
-                    raise DeviceTreeError("could not find parent for subvol")
+                    raise PopulatorError("could not find parent for subvol")
 
                 fmt = formats.getFormat("btrfs",
                                         device=btrfs_dev.path,

@@ -187,6 +187,9 @@ class SizePlacesError(StorageError):
 class UnknownSourceDeviceError(StorageError):
     pass
 
+class PopulatorError(StorageError):
+    pass
+
 # factories
 class DeviceFactoryError(StorageError):
     pass
