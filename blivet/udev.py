@@ -529,8 +529,12 @@ def device_is_biosraid_member(info):
 
     return False
 
-def device_get_dm_partition_disk(info):
-    if not device_is_dm_partition(info):
+def device_is_dm_partition(info):
+    return (device_is_dm(info) and
+            info.get("DM_UUID", "").split("-")[0].startswith("part"))
+
+def device_get_partition_disk(info):
+    if not device_is_partition(info) and not device_is_dm_partition(info):
         return None
 
     disk = None
@@ -543,10 +547,6 @@ def device_get_dm_partition_disk(info):
                 break
 
     return disk
-
-def device_is_dm_partition(info):
-    return (device_is_dm(info) and
-            info.get("DM_UUID", "").split("-")[0].startswith("part"))
 
 def device_get_disklabel_type(info):
     """ Return the type of disklabel on the device or None. """
