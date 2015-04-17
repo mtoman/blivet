@@ -514,7 +514,7 @@ def set_up_logging(log_file='/tmp/blivet.log'):
     program_log.setLevel(logging.DEBUG)
     handler = logging.FileHandler(log_file)
     handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s/%(threadName)s: %(message)s")
     handler.setFormatter(formatter)
     log.addHandler(handler)
     program_log.addHandler(handler)
