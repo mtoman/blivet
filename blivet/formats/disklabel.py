@@ -239,12 +239,6 @@ class DiskLabel(DeviceFormat):
         # other problems.
         self.commit()
 
-    def _destroy(self, **kwargs):
-        """ Wipe the disklabel from the device. """
-        log_method_call(self, device=self.device,
-                        type=self.type, status=self.status)
-        self.partedDevice.clobber()
-
     def commit(self):
         """ Commit the current partition table to disk and notify the OS. """
         log_method_call(self, device=self.device,
