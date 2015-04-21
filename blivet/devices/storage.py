@@ -486,7 +486,7 @@ class StorageDevice(Device):
     def _getSize(self):
         """ Get the device's size, accounting for pending changes. """
         size = self._size
-        if self.exists and self.resizable:
+        if self.exists and self.resizable and self.targetSize:
             size = self.targetSize
 
         return size
