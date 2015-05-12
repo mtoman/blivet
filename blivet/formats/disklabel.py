@@ -237,8 +237,13 @@ class DiskLabel(DeviceFormat):
         return False
 
     def _setCreateEventInfo(self):
+        label_type = self.labelType
+        if label_type == "msdos":
+            # yes, really.
+            label_type = "dos"
+
         self.eventSync.update_requirements(ID_FS_TYPE=KEY_ABSENT,
-                                           ID_PART_TABLE_TYPE=self.labelType,
+                                           ID_PART_TABLE_TYPE=label_type,
                                            ID_PART_TABLE_UUID=KEY_PRESENT)
 
     def _create(self, **kwargs):
