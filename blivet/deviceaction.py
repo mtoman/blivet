@@ -313,6 +313,8 @@ class ActionCreateDevice(DeviceAction):
     def execute(self, callbacks=None):
         super(ActionCreateDevice, self).execute(callbacks=callbacks)
         self.device.create()
+        if flags.uevents:
+            self.device.setup()
 
     def requires(self, action):
         """ Return True if self requires action.

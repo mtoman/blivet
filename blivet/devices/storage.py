@@ -504,11 +504,11 @@ class StorageDevice(Device):
             event_sync.set_ready()
 
         self.exists = True
-        self.setup()
         event_log.debug("StorageDevice.create notify %s", self.name)
         event_sync.notify() # notify event handler we're done post-processing
         event_sync.reset()
         if not flags.uevents:
+            self.setup()
             self.updateSysfsPath()
             udev.settle()
 
