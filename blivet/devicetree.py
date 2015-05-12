@@ -1082,7 +1082,7 @@ class DeviceTree(object):
         done = []
         def show_subtree(root, depth):
             abbreviate_subtree = root in done
-            s = "%s%s\n" % ("  " * depth, root)
+            s = "%s%s\n" % ("  " * depth, str(root))
             done.append(root)
             if abbreviate_subtree:
                 s += "%s...\n" % ("  " * (depth+1),)
