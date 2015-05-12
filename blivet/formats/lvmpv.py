@@ -120,7 +120,7 @@ class LVMPhysicalVolume(DeviceFormat):
         try:
             blockdev.lvm.pvremove(self.device)
         except blockdev.LVMError:
-            DeviceFormat.destroy(self, **kwargs)
+            self.wipe()
         finally:
             blockdev.lvm.pvscan(self.device)
 

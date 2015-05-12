@@ -390,7 +390,7 @@ class DeviceFormat(ObjectID):
         if not os.access(self.device, os.W_OK):
             raise DeviceFormatError("device path does not exist or is not writable")
 
-    def _destroy(self, **kwargs):
+    def wipe(self):
         rc = 0
         err = ""
         try:
@@ -404,6 +404,9 @@ class DeviceFormat(ObjectID):
         if err:
             msg = "error wiping old signatures from %s: %s" % (self.device, err)
             raise FormatDestroyError(msg)
+
+    def _destroy(self, **kwargs):
+        self.wipe()
 
     def _postDestroy(self, **kwargs):
         self.exists = False
