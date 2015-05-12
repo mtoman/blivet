@@ -26,6 +26,7 @@ from ..storage_log import log_exception_info, log_method_call
 import parted
 import _ped
 from ..errors import DiskLabelCommitError, InvalidDiskLabelError
+from ..event import eventManager
 from .. import arch
 from .. import udev
 from .. import util
@@ -70,6 +71,8 @@ class DiskLabel(DeviceFormat):
         self._origPartedDisk = None
         self._alignment = None
         self._endAlignment = None
+
+        self._masks = []
 
         if self.partedDevice:
             # set up the parted objects and raise exception on failure
@@ -125,7 +128,11 @@ class DiskLabel(DeviceFormat):
         self.updateOrigPartedDisk()
 
     def updateOrigPartedDisk(self):
-        self._origPartedDisk = self.partedDisk.duplicate()
+        self.mask_events()
+        try:
+            self._origPartedDisk = self.partedDisk.duplicate()
+        finally:
+            self.clear_event_mask()
 
     def resetPartedDisk(self):
         """ Set this instance's partedDisk to reflect the disk's contents. """
@@ -137,15 +144,39 @@ class DiskLabel(DeviceFormat):
         log_method_call(self, device=self.device, labelType=self._labelType)
         return parted.freshDisk(device=self.partedDevice, ty=self._labelType)
 
+    def mask_events(self, disk=True):
+        """ Set event masks for all partitions on this disk.
+
+            :keyword bool disk: whether to mask events on the disk itself also
+        """
+        disk_name = os.path.basename(self.device)
+        mask_devices = []
+        if disk:
+            mask_devices.append(disk_name)
+
+        for ud in udev.get_devices():
+            if udev.device_get_partition_disk(ud) == disk_name:
+                mask_devices.append(udev.device_get_name(ud))
+
+        for mask_device in mask_devices:
+            self._masks.append(eventManager.mask_add(device=mask_device))
+
+    def clear_event_mask(self):
+        for mask in self._masks:
+            eventManager.mask_remove(mask)
+
     @property
     def partedDisk(self):
         if not self._partedDisk:
             if self.exists:
+                self.mask_events()
                 try:
                     self._partedDisk = parted.Disk(device=self.partedDevice)
                 except (_ped.DiskLabelException, _ped.IOException,
                         NotImplementedError) as e:
                     raise InvalidDiskLabelError(e)
+                finally:
+                    self.clear_event_mask()
 
                 if self._partedDisk.type == "loop":
                     # When the device has no partition table but it has a FS,
@@ -158,7 +189,11 @@ class DiskLabel(DeviceFormat):
                 # preexisting disklabels if the passed type was wrong
                 self._labelType = self._partedDisk.type
             else:
-                self._partedDisk = self.freshPartedDisk()
+                self.mask_events()
+                try:
+                    self._partedDisk = self.freshPartedDisk()
+                finally:
+                    self.clear_event_mask()
 
             # turn off cylinder alignment
             if self._partedDisk.isFlagAvailable(parted.DISK_CYLINDER_ALIGNMENT):
@@ -186,10 +221,13 @@ class DiskLabel(DeviceFormat):
                 # particular, built-in USB flash readers show up as devices but
                 # do not always have any media present, so parted won't be able
                 # to find a device.
+                self.mask_events()
                 try:
                     self._partedDevice = parted.Device(path=self.device)
                 except (_ped.IOException, _ped.DeviceException) as e:
                     log.error("DiskLabel.partedDevice: Parted exception: %s", e)
+                finally:
+                    self.clear_event_mask()
             else:
                 log.info("DiskLabel.partedDevice: %s does not exist", self.device)
 
