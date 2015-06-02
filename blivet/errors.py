@@ -199,4 +199,12 @@ class DeviceFactoryError(StorageError):
 
 class AvailabilityError(StorageError):
     """ Raised if problem determining availability of external resource. """
+
+class EventManagerError(StorageError):
+    pass
+
+class EventQueueEmptyError(StorageError):
+    pass
+
+class EventParamError(StorageError):
     pass
