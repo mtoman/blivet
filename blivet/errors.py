@@ -208,3 +208,6 @@ class EventQueueEmptyError(StorageError):
 
 class EventParamError(StorageError):
     pass
+
+class SynchronizationError(StorageError):
+    pass
