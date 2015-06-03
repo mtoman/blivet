@@ -40,6 +40,7 @@ from .flags import flags
 from .populator import Populator
 from .storage_log import log_method_call, log_method_return
 from .threads import SynchronizedMeta
+from .handler import EventHandler
 
 import logging
 log = logging.getLogger("blivet")
@@ -101,6 +102,8 @@ class DeviceTree(object):
         self.dropLVMCache()
 
         lvm.lvm_cc_resetFilter()
+
+        self.eventHandler = EventHandler(self)
 
         self._populator = Populator(self,
                                     conf=conf,
