@@ -93,6 +93,10 @@ class EventHandler(object):
             log.debug("ignoring add event for %s", sysfs_path)
             return
 
+        if self.devicetree.actions.processing:
+            log.debug("ignoring event during action processing")
+            return
+
         device = self.devicetree.getDeviceByName(udev.device_get_name(info))
         if device and device.exists:
             log.info("%s is already in the tree", udev.device_get_name(info))
@@ -292,6 +296,10 @@ class EventHandler(object):
             if not device:
                 device = self.devicetree.getDeviceByName(name, hidden=True)
 
+        if self.devicetree.actions.processing:
+            log.debug("ignoring event during action processing")
+            return
+
         if not device:
             # We're not concerned with updating devices that have been removed
             # from the tree.
@@ -381,6 +389,10 @@ class EventHandler(object):
         info = event.info
         log.debug("device removed: %s", udev.device_get_sysfs_path(info))
         if info.subsystem != "block":
+            return
+
+        if self.devicetree.actions.processing:
+            log.debug("ignoring event during action processing")
             return
 
         # XXX Don't forget about disks actually going offline for some reason.
