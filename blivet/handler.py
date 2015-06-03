@@ -34,7 +34,7 @@ from .threads import SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
-console_log = logging.getLogger("blivet.console")
+event_log = logging.getLogger("blivet.event")
 
 @add_metaclass(SynchronizedMeta)
 class EventHandler(object):
@@ -51,10 +51,10 @@ class EventHandler(object):
         try:
             event = eventManager.next_event()
         except EventQueueEmptyError:
-            console_log.debug("uevent queue is empty")
+            event_log.debug("uevent queue is empty")
             return
 
-        console_log.debug("-- %s", event)
+        event_log.debug("-- %s", event)
         if event.action == "add":
             self.deviceAddedCB(event)
         elif event.action == "remove":
@@ -62,9 +62,9 @@ class EventHandler(object):
         elif event.action == "change":
             self.deviceChangedCB(event)
         else:
-            console_log.info("unknown event: %s", event)
+            event_log.info("unknown event: %s", event)
 
-        console_log.debug("<- %s", event)
+        event_log.debug("<- %s", event)
 
     def deviceAddedCB(self, event, force=False):
         """ Handle an "add" uevent on a block device.
@@ -93,8 +93,14 @@ class EventHandler(object):
             log.debug("ignoring add event for %s", sysfs_path)
             return
 
+        # If _syncBlivetOp returns True, this uevent is related to processing
+        # of an action. It may or may not be in the tree.
+        if self._syncBlivetOp(event):
+            # This will update size, uuid, &c for new devices.
+            return self.deviceChangedCB(event, expected=True)
+
         if self.devicetree.actions.processing:
-            log.debug("ignoring event during action processing")
+            log.debug("ignoring unexpected event during action processing")
             return
 
         device = self.devicetree.getDeviceByName(udev.device_get_name(info))
@@ -252,7 +258,33 @@ class EventHandler(object):
         # MD TODO: raid level, spares
         # BTRFS TODO: check for changes to subvol list IFF the volume is mounted
 
-    def deviceChangedCB(self, event):
+    def _update_uuids(self, event, device):
+        """ Set or update UUID of format and, as appropriate, container.
+
+            This method is called from :meth:`_syncBlivetOp` and from
+            :meth:`deviceChangedCB`.
+        """
+        if device.partitionable and event.info.get("ID_PART_TABLE_TYPE"):
+            uuid = udev.device_get_disklabel_uuid(event.info)
+        else:
+            # this works for regular filesystems as well as container members
+            uuid = self._getMemberUUID(event.info, device)
+
+        log.info("old uuid: %s ; new uuid: %s", device.format.uuid, uuid)
+        device.format.uuid = uuid
+        if hasattr(device.format, "containerUUID"):
+            if device.format.type == "lvmpv":
+                self.devicetree.dropLVMCache()
+            device.format.containerUUID = self._getContainerUUID(event.info,
+                                                                 device)
+            try:
+                container = self.devicetree.getChildren(device)[0]
+            except IndexError:
+                pass
+            else:
+                container.uuid = device.format.containerUUID
+
+    def deviceChangedCB(self, event, expected=False):
         """ Handle a "changed" uevent on a block device. """
         info = event.info
         sysfs_path = udev.device_get_sysfs_path(info)
@@ -281,14 +313,20 @@ class EventHandler(object):
                 # won't be able to determine its size.
                 device.sysfsPath = sysfs_path
 
-        if (not device and
+        if (not expected and not device and
             ((udev.device_is_md(info) and "MD_UUID" in info) or
              (udev.device_is_dm(info) and "DM_NAME" in info))):
             # md and dm devices aren't really added until you get a change
             # event
             return self.deviceAddedCB(event, force=True)
 
+        if not expected:
+            # See if this event was triggered a blivet action.
+            expected = self._syncBlivetOp(event)
+
         if device and not device.exists:
+            log.error("aborting event handler for non-existent device")
+            return
             self.devicetree.cancelDiskActions(device.disks)
             # now try again to look up the device
             device = self.devicetree.getDeviceBySysfsPath(sysfs_path,
@@ -296,8 +334,8 @@ class EventHandler(object):
             if not device:
                 device = self.devicetree.getDeviceByName(name, hidden=True)
 
-        if self.devicetree.actions.processing:
-            log.debug("ignoring event during action processing")
+        if not expected and self.devicetree.actions.processing:
+            log.debug("ignoring unexpected event during action processing")
             return
 
         if not device:
@@ -323,12 +361,13 @@ class EventHandler(object):
         # XXX resize of inactive lvs is handled in updateLVs (via change event
         #     handler for pv(s))
         current_size = device.readCurrentSize()
-        if device.currentSize != current_size:
-            self.devicetree.cancelDiskActions(device.disks)
+        if expected or device.currentSize != current_size:
+            if not expected:
+                self.devicetree.cancelDiskActions(device.disks)
             device.updateSize(newsize=current_size)
             # FIXME: update fs size here?
 
-        if not device.format.exists:
+        if not expected and not device.format.exists:
             self.devicetree.cancelDiskActions(device.disks)
 
         log.debug("changed: %s", pprint.pformat(dict(info)))
@@ -336,28 +375,33 @@ class EventHandler(object):
         ##
         ## Handle changes to the data it contains.
         ##
-        uuid = self._getMemberUUID(info, device)
+        partitioned = device.partitionable and info.get("ID_PART_TABLE_TYPE")
+        if partitioned:
+            uuid = udev.device_get_disklabel_uuid(info)
+        else:
+            uuid = self._getMemberUUID(info, device)
+
         label = udev.device_get_label(info)
 
-        partitioned = (device.partitionable and
-                       info.get("ID_PART_TABLE_TYPE") is not None)
         new_type = getFormat(udev.device_get_format(info)).type
         type_changed = (new_type != device.format.type and
                         not
                         (device.format.type == "disklabel" and partitioned))
-        log.info("partitioned: %s\ntype_changed: %s\nold type: %s\nnew type: %s",
-                 partitioned, type_changed, device.format.type, new_type)
-
-        if partitioned:
-            uuid = udev.device_get_disklabel_uuid(info)
-
-        log.info("old uuid: %s ; new uuid: %s", device.format.uuid, uuid)
         uuid_changed = (device.format.uuid and device.format.uuid != uuid)
         reformatted = uuid_changed or type_changed
+        log.info("partitioned: %s\ntype_changed: %s\nold type: %s\nnew type: %s",
+                 partitioned, type_changed, device.format.type, new_type)
+        log.info("old uuid: %s ; new uuid: %s", device.format.uuid, uuid)
 
         if not type_changed:
             if hasattr(device.format, "label"):
                 device.format.label = label
+
+            if not expected:
+                self._update_uuids(event, device)
+
+        if expected:
+            return
 
         if reformatted:
             log.info("%s was reformatted from outside of blivet", device.name)
@@ -391,8 +435,11 @@ class EventHandler(object):
         if info.subsystem != "block":
             return
 
+        if self._syncBlivetOp(event):
+            return
+
         if self.devicetree.actions.processing:
-            log.debug("ignoring event during action processing")
+            log.debug("ignoring unexpected event during action processing")
             return
 
         # XXX Don't forget about disks actually going offline for some reason.
@@ -406,3 +453,158 @@ class EventHandler(object):
                 if hasattr(fmt, "_mountpoint"):
                     fmt._mountpoint = None
                     fmt._mounted_read_only = False
+
+    def _look_up_device(self, info=None, devices=None):
+        if info is None or devices is None:
+            return None
+
+        name = udev.device_get_name(info)
+
+        # We can't do this lookup by sysfs path since the StorageDevice
+        # might have just been created, in which case it might not have a
+        # meaningful sysfs path (for dm and md they aren't predictable).
+        device = None
+        for _device in devices:
+            # If the device, it's format, or it's original format has an active
+            # event sync that matches the event, return it.
+            #
+            # We should never associate events with sync sets.
+            #
+            # This is part of why it is important to activate and deactivate
+            # event sync flags as near as possible to the actual operation.
+
+            if _device.name != name:
+                # XXX md devices sometimes have no symbolic name by the time
+                #     they are removed, so we have to look it up by sysfs
+                #     path
+                if not (name.startswith("md") and
+                        _device.sysfsPath and
+                        name == os.path.basename(_device.sysfsPath)):
+                    continue
+
+            event_syncs = [_device.modifySync, _device.controlSync,
+                           _device.format.eventSync,
+                           _device.originalFormat.eventSync]
+            if any(es.awaiting_sync for es in event_syncs if not es.aggregate):
+                device = _device
+                break
+
+        return device
+
+    def _syncBlivetOp(self, event):
+        """ Confirm completion of a blivet operation using an event.
+
+            :param event: an external event
+            :type event: :class:`~.event.Event`
+            :returns: True if event corresponds to a blivet-initiated operation
+            :rtype: bool
+
+            Methods :meth:`~.devices.StorageDevice.create`,
+            :meth:`~.devices.StorageDevice.destroy`, and
+            :meth:`~.devices.StorageDevice.setup` all use a synchronization
+            manager (:class:`~.synchronizer.EventSynchronizer`) to
+            synchronize the finalization/confirmation of their respective
+            operations. Flags within the manager are used to indicate which, if
+            any, of these methods is under way.
+
+            Generally, the goal is to associate an event with the operation
+            that caused it. It is possible that an event is not associated with
+            any blivet operation. It is also possible that an event is
+            associated with a device that is no longer in the devicetree.
+        """
+        name = udev.device_get_name(event.info)
+        log_method_call(self, name=name, action=event.action,
+                        sysfs_path=udev.device_get_sysfs_path(event.info))
+
+        # Get a list of all device instances.
+        devices = self.devicetree.devices
+        devices.extend(a.device for a in self.devicetree.actions.find()
+                                    if a.device not in devices)
+
+        ## If we can't associate this event with a device return now.
+        device = self._look_up_device(info=event.info, devices=devices)
+        if device is None:
+            return False
+
+        log.debug("event device is '%s'", device)
+
+        ## Try to associate the event with an event sync.
+        event_sync = None
+        if (event.action in ("add", "change") and
+            device.modifySync.awaiting_sync and
+            device.modifySync.creating):
+            ## device create without event delegation (eg: partition)
+            event_log.debug("* create %s", device.name)
+            event_sync = device.modifySync
+        elif (event.action in ("add", "change") and
+              device.controlSync.awaiting_sync and
+              device.controlSync.starting):
+            ## device setup
+            event_log.debug("* setup %s", device.name)
+            # update sysfsPath since the device will not have access to it
+            # until later in the change handler
+            device.sysfsPath = udev.device_get_sysfs_path(event.info)
+            event_sync = device.controlSync
+        elif (event.action in ("add", "change") and
+              device.controlSync.awaiting_sync and
+              device.controlSync.stopping and
+              device.name.startswith("loop")):
+            ## loop device teardown
+            # XXX You don't get a remove event when you deactivate a loop
+            #     device.
+            event_log.debug("* teardown %s", device.name)
+            event_sync = device.controlSync
+        elif (event.action == "change" and
+              device.modifySync.awaiting_sync and
+              device.modifySync.resizing):
+            ## device resize
+            event_log.debug("* resize %s", device.name)
+            event_sync = device.modifySync
+        elif (event.action == "change" and 
+              device.controlSync.awaiting_sync and
+              device.controlSync.changing and
+              device.controlSync.validate(event)):
+            ## device change (eg: event on pv for vg or lv creation)
+            event_log.debug("* change %s", device.name)
+            event_sync = device.controlSync
+        elif (event.action == "change" and
+              device.format.eventSync.awaiting_sync and
+              device.format.eventSync.validate(event)):
+            ## any change to a format
+            event_log.debug("* change %s format", device.name)
+            event_sync = device.format.eventSync
+        elif (event.action == "change" and
+              device.originalFormat.eventSync.awaiting_sync and
+              device.originalFormat.eventSync.validate(event)):
+            ## any change to a format
+            event_log.debug("* change %s format", device.name)
+            event_sync = device.originalFormat.eventSync
+        elif (event.action == "remove" and
+              device.controlSync.awaiting_sync and
+              device.controlSync.stopping):
+            ## device teardown
+            event_log.debug("* teardown %s", device.name)
+            event_sync = device.controlSync
+        elif (event.action == "remove" and
+              device.modifySync.awaiting_sync and
+              device.modifySync.destroying):
+            ## device destroy
+            event_log.debug("* destroy %s", device.name)
+            event_sync = device.modifySync
+
+        ret = False
+        if event_sync is not None:
+            event_sync.matched = True
+            event_log.debug("waiting for ready %s", name)
+            event_sync.wait_for_ready()
+            event_log.debug("notify %s", name)
+            if event_sync.creating or event_sync.changing:
+                # Set UUIDs now for newly-created devices and formats.
+                self._update_uuids(event, device)
+            event_sync.notify()
+            event_log.debug("wait %s", name)
+            event_sync.wait()
+            event_log.debug("done synchronizing %s", name)
+            ret = True
+
+        return ret
