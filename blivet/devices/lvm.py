@@ -32,6 +32,7 @@ from ..devicelibs import lvm
 
 from .. import errors
 from .. import util
+from ..flags import flags
 from ..formats import getFormat
 from ..storage_log import log_method_call
 from .. import udev
@@ -888,7 +889,8 @@ class LVMSnapShotBase(object):
         except errors.FSError:
             pass
 
-        udev.settle()
+        if not flags.uevents:
+            udev.settle()
         blockdev.lvm.lvsnapshotmerge(self.vg.name, self.lvname) # pylint: disable=no-member
 
 

@@ -560,7 +560,8 @@ class PartitionDevice(StorageDevice):
             # If a udev device is created with the watch option, then
             # a change uevent is synthesized and we need to wait for
             # things to settle.
-            udev.settle()
+            if flags.uevents:
+                udev.settle()
 
     def _create(self):
         """ Create the device. """
@@ -685,7 +686,8 @@ class PartitionDevice(StorageDevice):
     def _postDestroy(self):
         super(PartitionDevice, self)._postDestroy()
         if isinstance(self.disk, DMDevice):
-            udev.settle()
+            if not flags.uevents:
+                udev.settle()
             # self.exists has been unset, so don't use self.status
             if os.path.exists(self.path):
                 try:

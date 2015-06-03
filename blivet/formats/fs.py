@@ -608,7 +608,8 @@ class FS(DeviceFormat):
         if not os.path.exists(mountpoint):
             raise FSError("mountpoint does not exist")
 
-        udev.settle()
+        if not flags.uevents:
+            udev.settle()
         return True
 
     def _teardown(self, **kwargs):

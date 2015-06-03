@@ -495,7 +495,8 @@ class MDRaidArrayDevice(ContainerDevice, RaidDevice):
         blockdev.md.create(self.path, level, disks, spares,
                            version=self.metadataVersion,
                            bitmap=self.createBitmap)
-        udev.settle()
+        if not flags.uevents:
+            udev.settle()
 
     def _remove(self, member):
         self.setup()

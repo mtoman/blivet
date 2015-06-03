@@ -212,7 +212,9 @@ class LUKS(DeviceFormat):
 
     def _postCreate(self, **kwargs):
         super(LUKS, self)._postCreate(**kwargs)
-        self.uuid = blockdev.crypto.luks_uuid(self.device)
+        if not flags.uevents:
+            self.uuid = blockdev.crypto.luks_uuid(self.device)
+
         if flags.installer_mode or not self.mapName:
             self.mapName = "luks-%s" % self.uuid
 

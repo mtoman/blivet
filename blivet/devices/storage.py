@@ -362,8 +362,10 @@ class StorageDevice(Device):
 
     def _postSetup(self):
         """ Perform post-setup operations. """
-        udev.settle()
-        self.updateSysfsPath()
+        if not flags.uevents:
+            udev.settle()
+            self.updateSysfsPath()
+
         # the device may not be set up when we want information about it
         if self._size == Size(0):
             self.updateSize()
@@ -386,7 +388,10 @@ class StorageDevice(Device):
             self.originalFormat.teardown()
         if self.format.exists:
             self.format.teardown()
-        udev.settle()
+
+        if not flags.uevents:
+            udev.settle()
+
         return True
 
     def _teardown(self, recursive=None):
@@ -433,8 +438,9 @@ class StorageDevice(Device):
         """ Perform post-create operations. """
         self.exists = True
         self.setup()
-        self.updateSysfsPath()
-        udev.settle()
+        if not flags.uevents:
+            self.updateSysfsPath()
+            udev.settle()
 
         # make sure that targetSize is updated to reflect the actual size
         self.updateSize()

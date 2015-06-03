@@ -423,11 +423,12 @@ class BTRFSVolumeDevice(BTRFSDevice, ContainerDevice, RaidDevice):
 
     def _postCreate(self):
         super(BTRFSVolumeDevice, self)._postCreate()
-        info = udev.get_device(self.sysfsPath)
-        if not info:
-            log.error("failed to get updated udev info for new btrfs volume")
-        else:
-            self.format.volUUID = udev.device_get_uuid(info)
+        if not flags.uevents:
+            info = udev.get_device(self.sysfsPath)
+            if not info:
+                log.error("failed to get updated udev info for new btrfs volume")
+            else:
+                self.format.volUUID = udev.device_get_uuid(info)
 
         self.format.exists = True
         self.originalFormat.exists = True

@@ -47,7 +47,8 @@ def get_device(sysfs_path):
     return dev
 
 def get_devices(subsystem="block"):
-    settle()
+    if not flags.uevents:
+        settle()
     return [d for d in global_udev.list_devices(subsystem=subsystem)
                         if not __is_blacklisted_blockdev(d.sys_name)]
 
@@ -65,7 +66,8 @@ def trigger(subsystem=None, action="add", name=None):
         argv.append("--sysname-match=%s" % name)
 
     util.run_program(["udevadm"] + argv)
-    settle()
+    if not flags.uevents:
+        settle()
 
 def resolve_devspec(devspec):
     if not devspec:

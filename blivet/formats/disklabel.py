@@ -255,7 +255,9 @@ class DiskLabel(DeviceFormat):
             raise DiskLabelCommitError(msg)
         else:
             self.updateOrigPartedDisk()
-            udev.settle()
+        finally:
+            if not flags.uevents:
+                udev.settle()
 
     def commitToDisk(self):
         """ Commit the current partition table to disk. """
