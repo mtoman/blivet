@@ -20,6 +20,7 @@ import six
 import logging
 log = logging.getLogger("blivet")
 program_log = logging.getLogger("program")
+console_log = logging.getLogger("blivet.console")
 
 from threading import Lock
 # this will get set to anaconda's program_log_lock in enable_installer_mode
@@ -505,10 +506,11 @@ def compare(first, second):
 ##
 ## Convenience functions for examples and tests
 ##
-def set_up_logging(log_file='/tmp/blivet.log'):
+def set_up_logging(log_file='/tmp/blivet.log', console_logs=None):
     """ Configure the blivet logger to write out a log file.
 
         :keyword str log_file: path to the log file (default: /tmp/blivet.log)
+        :keyword list console_logs: list of log names to output on the console
     """
     log.setLevel(logging.DEBUG)
     program_log.setLevel(logging.DEBUG)
@@ -516,9 +518,23 @@ def set_up_logging(log_file='/tmp/blivet.log'):
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s/%(threadName)s: %(message)s")
     handler.setFormatter(formatter)
+
     log.addHandler(handler)
     program_log.addHandler(handler)
+    if console_logs:
+        set_up_console_log(log_names=console_logs)
     log.info("sys.argv = %s", sys.argv)
+
+def set_up_console_log(log_names=None):
+    log_names = log_names or []
+    handler = logging.StreamHandler()
+    console_log.setLevel(logging.DEBUG)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("%(threadName)s: %(message)s")
+    handler.setFormatter(formatter)
+    console_log.addHandler(handler)
+    for name in log_names:
+        logging.getLogger(name).addHandler(handler)
 
 def create_sparse_tempfile(name, size):
     """ Create a temporary sparse file.
