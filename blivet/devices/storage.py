@@ -31,6 +31,7 @@ from ..storage_log import log_method_call
 from .. import udev
 from ..formats import getFormat
 from ..size import Size
+from ..synchronizer import OpEventSync
 
 import logging
 log = logging.getLogger("blivet")
@@ -57,6 +58,12 @@ class StorageDevice(Device):
     _isDisk = False
     _encrypted = False
     _external_dependencies = []
+
+    _udev = True
+    """ Whether udev manages device nodes for devices of this type. """
+
+    _postTeardownWaitTimeout = None
+    """ Timeout value for wait call following teardown. """
 
     def __init__(self, name, fmt=None, uuid=None,
                  size=None, major=None, minor=None,
@@ -128,6 +135,9 @@ class StorageDevice(Device):
         self._targetSize = self._size
 
         self.deviceLinks = []
+
+        """ Used to synchronize access with uevent handlers. """
+        self._eventSync = None # use the same instance for all operations
 
         if self.exists and self.status:
             self.updateSize()
@@ -726,6 +736,57 @@ class StorageDevice(Device):
         if not new:
             for p in self.parents:
                 p.addChild()
+
+    def _getEventSync(self):
+        if self._eventSync is None:
+            self._eventSync = OpEventSync(passthrough=not self._udev)
+
+        return self._eventSync
+
+    ##
+    ## Event synchronization managers
+    ##
+    # These manage synchronization between the device methods that initiate
+    # actions on the underlying device and uevent handlers. This allows us to
+    # know exactly when newly created devices appear, for example.
+    #
+    # There are two of them because of variations in behavior among different
+    # device types:
+    #
+    # * Disks and partitions only need one synchronization manager because all
+    #   operations on those devices manifest as uevents on the device itself.
+    # * LVM VGs are different in that there is no block device to represent the
+    #   VG. This means that actions on a VG manifest as uevents on the VG's PVs.
+    # * LVM LVs have a combination of the two aforementioned models. Controlling
+    #   actions (setup, teardown) manifest as uevents on the LV device, while
+    #   modifying actions (create, destroy) events manifest as uevents on the
+    #   PVs.
+    # * MD arrays are similar to LVM LVs except that there is no intermediate
+    #   VG layer (which is really only a passthrough anyway).
+    # * BTRFS volumes behave the same way as LVM VGs.
+    # * BTRFS subvolumes use their top-level volume's synchronization manager,
+    #   meaning they also rely on uevents on the physical member devices.
+    #
+    # It is counter-intuitive to use the controlSync for "changing" actions when
+    # "changing" is synonymous with "modify" (as in "modifySync"). We do this
+    # because we want "changing" to use events on the actual device if that
+    # device has a device node. In every case except for lvm vg and btrfs, the
+    # controlSync is connected to the device itself and is not delegating
+    # to parent devices.
+    controlSync = property(lambda d: d._getEventSync(),
+                           doc="controls synchronization for setup/teardown")
+    modifySync = property(lambda d: d._getEventSync(),
+                          doc="controls synchronization for create/destroy")
+
+    @property
+    def delegateModifyEvents(self):
+        """ Do modify actions for this device manifest on parent devices? """
+        return self.modifySync != self._getEventSync()
+
+    @property
+    def delegateControlEvents(self):
+        """ Do control actions for this device manifest on parent devices? """
+        return self.controlSync != self._getEventSync()
 
     def populateKSData(self, data):
         # the common pieces are basically the formatting

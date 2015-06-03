@@ -26,6 +26,7 @@ from six import add_metaclass
 from .. import errors
 from ..storage_log import log_method_call
 from ..formats import get_device_format_class
+from ..synchronizer import OpEventSyncSet
 from ..threads import SynchronizedABCMeta
 
 import logging
@@ -61,6 +62,7 @@ class ContainerDevice(StorageDevice):
         if not self.formatClass:
             raise errors.StorageError("cannot find '%s' class" % self._formatClassName)
 
+        self._parentSyncSet = None
         super(ContainerDevice, self).__init__(*args, **kwargs)
 
     def _verifyMemberUuid(self, member, expect_equality=True, require_existence=True):
@@ -123,6 +125,11 @@ class ContainerDevice(StorageDevice):
             raise ValueError("cannot add member with mismatched UUID")
 
         super(ContainerDevice, self)._addParent(member)
+        self._clearEventSyncs()
+
+    def _removeParent(self, member):
+        super(ContainerDevice, self)._removeParent(member)
+        self._clearEventSyncs()
 
     @abc.abstractmethod
     def _add(self, member):
@@ -198,3 +205,20 @@ class ContainerDevice(StorageDevice):
             # Make sure md and btrfs member formats are marked as existing since
             # they have no format.create method.
             parent.format.exists = True
+
+    # Container device operations manifest as events on member devices. We use
+    # the parents' controlSync since it monitors events on the device itself
+    # instead of delegating to parents whenever possible (IFF the device has a
+    # device node).
+    def _getParentSyncSet(self):
+        if self._parentSyncSet is None:
+            synchronizers = [p.controlSync for p in self.parents]
+            self._parentSyncSet = OpEventSyncSet(members=synchronizers)
+
+        return self._parentSyncSet
+
+    def _clearEventSyncs(self):
+        self._parentSyncSet = None
+
+    controlSync = property(lambda c: c._getParentSyncSet())
+    modifySync = property(lambda c: c._getParentSyncSet())

@@ -23,6 +23,7 @@
 
 import os
 import importlib
+import stat
 from gi.repository import BlockDev as blockdev
 from six import add_metaclass
 
@@ -34,11 +35,11 @@ from ..storage_log import log_method_call
 from ..errors import DeviceFormatError, FormatCreateError, FormatDestroyError, FormatSetupError
 from ..i18n import N_
 from ..size import Size
+from ..synchronizer import OpEventSync
 from ..threads import SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
-
 
 device_formats = {}
 def register_device_format(fmt_class):
@@ -191,6 +192,9 @@ class DeviceFormat(ObjectID):
         self.exists = kwargs.get("exists", False)
         self.options = kwargs.get("options")
 
+        self.eventSync = OpEventSync()
+        self.updateSyncPassthrough()
+
     def __repr__(self):
         s = ("%(classname)s instance (%(id)s) object id %(object_id)d--\n"
              "  type = %(type)s  name = %(name)s  status = %(status)s\n"
@@ -310,6 +314,8 @@ class DeviceFormat(ObjectID):
         if error_msg:
             raise ValueError(error_msg)
         self._device = devspec
+        if hasattr(self, "eventSync"):
+            self.updateSyncPassthrough()
 
     def _getDevice(self):
         return self._device
@@ -325,6 +331,11 @@ class DeviceFormat(ObjectID):
     @property
     def type(self):
         return self._type
+
+    def updateSyncPassthrough(self):
+        self.eventSync.passthrough = (self.device and
+                               (not os.path.exists(self.device) or
+                                not stat.S_ISBLK(os.stat(self.device).st_mode)))
 
     def create(self, **kwargs):
         """ Write the formatting to the specified block device.

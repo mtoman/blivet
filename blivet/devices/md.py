@@ -530,6 +530,10 @@ class MDRaidArrayDevice(ContainerDevice, RaidDevice):
     def model(self):
         return self.description
 
+    # md arrays use events on the members for create/destroy and events on the
+    # array device for setup/teardown
+    controlSync = property(lambda d: d._getEventSync())
+
     def dracutSetupArgs(self):
         return set(["rd.md.uuid=%s" % self.mdadmFormatUUID])
 
