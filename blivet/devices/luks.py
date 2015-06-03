@@ -67,6 +67,10 @@ class LUKSDevice(DMCryptDevice):
             size = self.currentSize
         return size
 
+    def _setup(self, orig=False):
+        # this makes the post-setup sync happen
+        super(LUKSDevice, self)._setup(orig=orig)
+
     def _postCreate(self):
         self.name = self.slave.format.mapName
         StorageDevice._postCreate(self)

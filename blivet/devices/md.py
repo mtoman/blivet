@@ -466,6 +466,11 @@ class MDRaidArrayDevice(ContainerDevice, RaidDevice):
             self.metadataVersion = "1.0"
 
     def _postCreate(self):
+        if flags.uevents:
+            # All of the below will be handled by uevent handlers if they are
+            # enabled.
+            return super(MDRaidArrayDevice, self)._postCreate()
+
         # this is critical since our status method requires a valid sysfs path
         self.exists = True  # this is needed to run updateSysfsPath
         self.updateSysfsPath()
@@ -580,12 +585,13 @@ class MDContainerDevice(MDRaidArrayDevice):
         log_method_call(self, self.name, status=self.status,
                         controllable=self.controllable)
         # we don't really care about the return value of _preTeardown here.
-        # see comment just above md_deactivate call
+        # see comment just above mddeactivate call
         self._preTeardown(recursive=recursive)
 
         # Since BIOS RAID sets (containers in mdraid terminology) never change
         # there is no need to stop them and later restart them. Not stopping
         # (and thus also not starting) them also works around bug 523334
+        self.controlSync.reset()
         return
 
     @property
@@ -638,10 +644,11 @@ class MDBiosRaidArrayDevice(MDRaidArrayDevice):
         log_method_call(self, self.name, status=self.status,
                         controllable=self.controllable)
         # we don't really care about the return value of _preTeardown here.
-        # see comment just above md_deactivate call
+        # see comment just above mddeactivate call
         self._preTeardown(recursive=recursive)
 
         # Since BIOS RAID sets (containers in mdraid terminology) never change
         # there is no need to stop them and later restart them. Not stopping
         # (and thus also not starting) them also works around bug 523334
+        self.controlSync.reset()
         return

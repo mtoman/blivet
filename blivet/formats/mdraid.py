@@ -28,6 +28,7 @@ from . import DeviceFormat, register_device_format
 from ..flags import flags
 from ..i18n import N_
 from ..tasks import availability
+from ..synchronizer import KEY_ABSENT
 
 import logging
 log = logging.getLogger("blivet")
@@ -84,7 +85,13 @@ class MDRaidMember(DeviceFormat):
     def supported(self):
         return super(MDRaidMember, self).supported and self._plugin.available
 
+    def _setDestroyEventInfo(self):
+        self.eventSync.update_requirements(ID_FS_TYPE=KEY_ABSENT,
+                                           ID_FS_UUID=KEY_ABSENT,
+                                           ID_FS_UUID_SUB=KEY_ABSENT)
+
     def _destroy(self, **kwargs):
+        super(MDRaidMember, self)._destroy(**kwargs)
         blockdev.md.destroy(self.device)
 
     @property

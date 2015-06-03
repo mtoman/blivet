@@ -192,7 +192,11 @@ class LUKS(DeviceFormat):
         log_method_call(self, device=self.device,
                         type=self.type, status=self.status)
         log.debug("unmapping %s", self.mapName)
+        self.eventSync.stopping = True
         blockdev.crypto.luks_close(self.mapName)
+        self.eventSync.ready_wait(timeout=2)
+        self.eventSync.notify()
+        self.eventSync.reset()
 
     def _preCreate(self, **kwargs):
         super(LUKS, self)._preCreate(**kwargs)

@@ -50,11 +50,13 @@ from ..size import Size, ROUND_UP, ROUND_DOWN, unitStr
 from ..i18n import N_
 from .. import udev
 from ..mounts import mountsCache
+from ..synchronizer import KEY_PRESENT
 
 from .fslib import kernel_filesystems, update_kernel_filesystems
 
 import logging
 log = logging.getLogger("blivet")
+event_log = logging.getLogger("blivet.event")
 
 class FS(DeviceFormat):
     """ Filesystem base class. """
@@ -342,6 +344,10 @@ class FS(DeviceFormat):
         if not self._mkfs.available:
             return
 
+    def _setCreateEventInfo(self):
+        self.eventSync.update_requirements(ID_FS_TYPE=self.mountType,
+                                           ID_FS_UUID=KEY_PRESENT)
+
     def _create(self, **kwargs):
         """ Create the filesystem.
 
@@ -436,10 +442,20 @@ class FS(DeviceFormat):
         else:
             self.targetSize = rounded
 
+        self.eventSync.resizing = True
+
+        timeout = None
         try:
             self._resize.doTask()
         except FSError as e:
+            timeout = 2
             raise FSResizeError(e, self.device)
+        finally:
+            event_log.debug("FS.resize wait %s", self.device)
+            self.eventSync.ready_wait(timeout=timeout)
+            event_log.debug("FS.resize notify %s", self.device)
+            self.eventSync.notify()
+            self.eventSync.reset()
 
         self.doCheck()
 
@@ -460,7 +476,16 @@ class FS(DeviceFormat):
         if not os.path.exists(self.device):
             raise FSError("device does not exist")
 
-        self._fsck.doTask()
+        self.eventSync.changing = True
+        try:
+            self._fsck.doTask()
+        finally:
+            event_log.debug("FS.check wait %s", self.device)
+            # it may not have been opened r/w, so just wait briefly
+            self.eventSync.ready_wait(timeout=2)
+            event_log.debug("FS.check set ready %s", self.device)
+            self.eventSync.notify()
+            self.eventSync.reset()
 
     def loadModule(self):
         """Load whatever kernel module is required to support this filesystem."""
@@ -676,7 +701,20 @@ class FS(DeviceFormat):
         if not os.path.exists(self.device):
             raise FSError("device does not exist")
 
-        self._writelabel.doTask()
+        self.eventSync.update_requirements(ID_FS_LABEL=self.label)
+        self.eventSync.changing = True
+        timeout = None
+        try:
+            self._writelabel.doTask()
+        except FSError:
+            timeout = 2
+            raise
+        finally:
+            event_log.debug("FS.label wait %s", self.device)
+            self.eventSync.ready_wait(timeout=timeout)
+            event_log.debug("FS.label set ready %s", self.device)
+            self.eventSync.notify()
+            self.eventSync.reset()
 
     @property
     def utilsAvailable(self):

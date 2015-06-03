@@ -35,6 +35,7 @@ from ..synchronizer import OpEventSync
 
 import logging
 log = logging.getLogger("blivet")
+event_log = logging.getLogger("blivet.event")
 
 from .device import Device
 from .network import NetworkStorageDevice
@@ -354,6 +355,7 @@ class StorageDevice(Device):
             return False
 
         self.setupParents(orig=orig)
+        self.controlSync.starting = True
         return True
 
     def _setup(self, orig=False):
@@ -367,11 +369,29 @@ class StorageDevice(Device):
         if not self._preSetup(orig=orig):
             return
 
-        self._setup(orig=orig)
+        try:
+            self._setup(orig=orig)
+        except Exception:
+            # don't cause a deadlock if the failure generated an event
+            self.controlSync.ready_wait(timeout=1)
+            self.controlSync.notify()
+            self.controlSync.reset()
+            raise
+
         self._postSetup()
 
     def _postSetup(self):
         """ Perform post-setup operations. """
+        event_sync = self.controlSync
+        if self.__class__._setup != StorageDevice._setup:
+            event_log.debug("StorageDevice.setup wait %s", self.name)
+            event_sync.ready_wait()
+        else:
+            event_sync.set_ready()
+
+        event_log.debug("StorageDevice.setup notify %s", self.name)
+        event_sync.notify()
+        event_sync.reset()
         if not flags.uevents:
             udev.settle()
             self.updateSysfsPath()
@@ -402,6 +422,7 @@ class StorageDevice(Device):
         if not flags.uevents:
             udev.settle()
 
+        self.controlSync.stopping = True
         return True
 
     def _teardown(self, recursive=None):
@@ -415,11 +436,31 @@ class StorageDevice(Device):
         if not self._preTeardown(recursive=recursive):
             return
 
-        self._teardown(recursive=recursive)
+        try:
+            self._teardown(recursive=recursive)
+        except Exception:
+            # don't cause a deadlock if the failure generated an event
+            self.controlSync.ready_wait(timeout=1)
+            self.controlSync.notify()
+            self.controlSync.reset()
+            raise
+
         self._postTeardown(recursive=recursive)
 
     def _postTeardown(self, recursive=None):
         """ Perform post-teardown operations. """
+        event_sync = self.controlSync
+        if self.__class__._teardown != StorageDevice._teardown:
+            event_log.debug("StorageDevice.teardown wait %s", self.name)
+            event_sync.ready_wait(timeout=self._postTeardownWaitTimeout)
+        else:
+            event_sync.set_ready()
+
+        event_log.debug("StorageDevice.teardown notify %s", self.name)
+        event_sync.notify()
+        event_sync.reset()
+        self.sysfsPath = ""
+
         if recursive:
             self.teardownParents(recursive=recursive)
 
@@ -432,6 +473,7 @@ class StorageDevice(Device):
             raise errors.DeviceError("device has already been created", self.name)
 
         self.setupParents()
+        self.modifySync.creating = True
 
     def _create(self):
         """ Perform device-specific create operations. """
@@ -441,13 +483,31 @@ class StorageDevice(Device):
         """ Create the device. """
         log_method_call(self, self.name, status=self.status)
         self._preCreate()
-        self._create()
+        try:
+            self._create()
+        except Exception:
+            # don't cause a deadlock if the failure generated an event
+            self.modifySync.ready_wait(timeout=1)
+            self.modifySync.notify()
+            self.modifySync.reset()
+            raise
+
         self._postCreate()
 
     def _postCreate(self):
         """ Perform post-create operations. """
+        event_sync = self.modifySync
+        if self.__class__._create != StorageDevice._create:
+            event_log.debug("StorageDevice.create wait %s", self.name)
+            event_sync.ready_wait() # wait for notification the event was received
+        else:
+            event_sync.set_ready()
+
         self.exists = True
         self.setup()
+        event_log.debug("StorageDevice.create notify %s", self.name)
+        event_sync.notify() # notify event handler we're done post-processing
+        event_sync.reset()
         if not flags.uevents:
             self.updateSysfsPath()
             udev.settle()
@@ -469,6 +529,7 @@ class StorageDevice(Device):
             raise errors.DeviceError("Cannot destroy non-leaf device", self.name)
 
         self.teardown()
+        self.modifySync.destroying = True
 
     def _destroy(self):
         """ Perform device-specific destruction operations. """
@@ -478,12 +539,30 @@ class StorageDevice(Device):
         """ Destroy the device. """
         log_method_call(self, self.name, status=self.status)
         self._preDestroy()
-        self._destroy()
+        try:
+            self._destroy()
+        except Exception:
+            # don't cause a deadlock if the failure generated an event
+            self.modifySync.ready_wait(timeout=1)
+            self.modifySync.notify()
+            self.modifySync.reset()
+            raise
         self._postDestroy()
 
     def _postDestroy(self):
         """ Perform post-destruction operations. """
+        event_sync = self.modifySync
+        if self.__class__._destroy != StorageDevice._destroy:
+            event_log.debug("StorageDevice.destroy wait %s", self.name)
+            event_sync.ready_wait() # wait for notification that event was received
+        else:
+            event_sync.set_ready()
+
         self.exists = False
+        event_log.debug("StorageDevice.destroy notify %s", self.name)
+        event_sync.notify() # notify the handler we're done post-processing
+        event_sync.reset()
+        self.sysfsPath = ""
 
     def setupParents(self, orig=False):
         """ Run setup method of all parent devices. """

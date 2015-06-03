@@ -42,6 +42,7 @@ from ..threads import SynchronizedABCMeta
 
 import logging
 log = logging.getLogger("blivet")
+event_log = logging.getLogger("blivet.event")
 
 from .lib import LINUX_SECTOR_SIZE
 from .device import Device
@@ -57,6 +58,9 @@ class LVMVolumeGroupDevice(ContainerDevice):
     _formatClassName = property(lambda s: "lvmpv")
     _formatUUIDAttr = property(lambda s: "vgUuid")
     _formatImmutable = True
+    # Sometimes a vg teardown does not generate a uevent on any pv, so we have
+    # to set a timeout.
+    _postTeardownWaitTimeout = 0.2
 
     @staticmethod
     def get_supported_pe_sizes():
@@ -220,8 +224,14 @@ class LVMVolumeGroupDevice(ContainerDevice):
 
     def _preDestroy(self):
         StorageDevice._preDestroy(self)
+
+        # for vgs the controlSync and modifySync are the same instance, so we
+        # have to clear the destroying flag before we can set up the parents
+        self.controlSync.reset()
         # set up the pvs since lvm needs access to them to do the vgremove
         self.setupParents(orig=True)
+        # now we set the destroying flag
+        self.modifySync.destroying = True
 
     def _destroy(self):
         """ Destroy the device. """
@@ -700,8 +710,21 @@ class LVMLogicalVolumeDevice(DMDevice):
         if self.format.exists:
             self.format.teardown()
 
-        udev.settle()
-        blockdev.lvm.lvresize(self.vg.name, self._name, self.size)
+        if not flags.uevents:
+            udev.settle()
+
+        event_sync = self.modifySync
+        timeout = None
+        try:
+            blockdev.lvm.lvresize(self.vg.name, self._name, self.size)
+        except Exception:
+            timeout = 2
+            raise
+        finally:
+            event_sync.ready_wait(timeout=timeout)
+            event_log.debug("LVMLogicalVolumeDevice.resize notify %s", self.name)
+            event_sync.notify()
+            event_sync.reset()
 
     @property
     def isleaf(self):

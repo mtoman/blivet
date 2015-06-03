@@ -22,6 +22,7 @@
 
 import copy
 from six import add_metaclass
+import time
 
 from .deviceaction import ActionCreateDevice, ActionDestroyDevice
 from .deviceaction import action_type_from_string, action_object_from_string
@@ -34,6 +35,7 @@ from .threads import blivet_lock, SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
+console_log = logging.getLogger("blivet.console")
 
 @add_metaclass(SynchronizedMeta)
 class ActionList(object):
@@ -300,7 +302,7 @@ class ActionList(object):
         self._preProcess(devices=devices)
 
         for action in self._actions[:]:
-            log.info("executing action: %s", action)
+            console_log.info("executing action: %s", action)
             if dryRun:
                 continue
 
@@ -325,5 +327,8 @@ class ActionList(object):
                         device.format.device = device.path
 
                 self._completed_actions.append(self._actions.pop(0))
+
+            # give up a few cycles in case there are events to process
+            time.sleep(0.1)
 
         self._postProcess(devices=devices)

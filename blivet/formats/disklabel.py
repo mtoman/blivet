@@ -33,6 +33,7 @@ from ..flags import flags
 from ..i18n import _, N_
 from . import DeviceFormat, register_device_format
 from ..size import Size
+from ..synchronizer import KEY_ABSENT, KEY_PRESENT
 
 import logging
 log = logging.getLogger("blivet")
@@ -235,40 +236,70 @@ class DiskLabel(DeviceFormat):
         """ Device status. """
         return False
 
+    def _setCreateEventInfo(self):
+        self.eventSync.update_requirements(ID_FS_TYPE=KEY_ABSENT,
+                                           ID_PART_TABLE_TYPE=self.labelType,
+                                           ID_PART_TABLE_UUID=KEY_PRESENT)
+
     def _create(self, **kwargs):
         """ Create the device. """
         log_method_call(self, device=self.device,
                         type=self.type, status=self.status)
+        super(DiskLabel, self)._create(**kwargs)
         # We're relying on someone having called resetPartedDisk -- we
         # could ensure a fresh disklabel by setting self._partedDisk to
         # None right before calling self.commit(), but that might hide
         # other problems.
-        self.commit()
+        self.commit(notify=False)
 
-    def commit(self):
-        """ Commit the current partition table to disk and notify the OS. """
+    def _setDestroyEventInfo(self):
+        self.eventSync.update_requirements(ID_PART_TABLE_TYPE=KEY_ABSENT,
+                                           ID_PART_TABLE_UUID=KEY_ABSENT)
+
+    def commit(self, notify=True):
+        """ Commit the current partition table to disk and notify the OS.
+
+            :keyword bool notify: whether to ensure the operation via udev
+        """
         log_method_call(self, device=self.device,
                         numparts=len(self.partitions))
+        if notify:
+            self.eventSync.changing = True
+        timeout = None
         try:
             self.partedDisk.commit()
         except parted.DiskException as msg:
+            timeout = 2
             raise DiskLabelCommitError(msg)
         else:
             self.updateOrigPartedDisk()
         finally:
             if not flags.uevents:
                 udev.settle()
+            if notify:
+                self.eventSync.ready_wait(timeout=timeout)
+                self.eventSync.notify()
+                self.eventSync.reset()
 
     def commitToDisk(self):
         """ Commit the current partition table to disk. """
         log_method_call(self, device=self.device,
                         numparts=len(self.partitions))
+        self.eventSync.changing = True
+        timeout = None
         try:
             self.partedDisk.commitToDevice()
         except parted.DiskException as msg:
+            timeout = 2
             raise DiskLabelCommitError(msg)
         else:
             self.updateOrigPartedDisk()
+        finally:
+            if not flags.uevents:
+                udev.settle()
+            self.eventSync.ready_wait(timeout=timeout)
+            self.eventSync.notify()
+            self.eventSync.reset()
 
     def addPartition(self, start, end, ptype=None):
         """ Add a partition to the disklabel.

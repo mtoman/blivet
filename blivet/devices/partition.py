@@ -35,6 +35,7 @@ from ..size import Size, MiB
 
 import logging
 log = logging.getLogger("blivet")
+event_log = logging.getLogger("blivet.event")
 
 from .device import Device
 from .storage import StorageDevice
@@ -552,15 +553,25 @@ class PartitionDevice(StorageDevice):
         device = self.partedPartition.geometry.device.path
         cmd = ["dd", "if=/dev/zero", "of=%s" % device, "bs=%d" % bs,
                "seek=%d" % start, "count=%d" % count]
+        event_sync = self.disk.controlSync
+        event_sync.changing = True
+        timeout = None
         try:
             util.run_program(cmd)
         except OSError as e:
+            timeout = 2
             log.error(str(e))
         finally:
+            event_log.debug("PartitionDevice.wipe1 wait %s", self.name)
+            event_sync.ready_wait(timeout=timeout)
+            event_log.debug("PartitionDevice.wipe1 notify %s", self.name)
+            event_sync.notify()
+            event_sync.reset()
+
             # If a udev device is created with the watch option, then
             # a change uevent is synthesized and we need to wait for
             # things to settle.
-            if flags.uevents:
+            if not flags.uevents:
                 udev.settle()
 
     def _create(self):
@@ -569,8 +580,10 @@ class PartitionDevice(StorageDevice):
         self.disk.format.addPartition(self.partedPartition.geometry.start,
                                       self.partedPartition.geometry.end,
                                       self.partedPartition.type)
-
+        # reset the modifySync since we'll be using it in _wipe
+        self.modifySync.reset()
         self._wipe()
+        self.modifySync.creating = True
         try:
             self.disk.format.commit()
         except errors.DiskLabelCommitError:
@@ -592,7 +605,16 @@ class PartitionDevice(StorageDevice):
         if not self.isExtended:
             # Ensure old metadata which lived in freespace so did not get
             # explictly destroyed by a destroyformat action gets wiped
-            self.format.wipe()
+            self.format.eventSync.changing = True
+            self.format.device = self.path
+            try:
+                self.format.wipe()
+            finally:
+                event_log.debug("PartitionDevice.wipe2 wait %s", self.name)
+                self.format.eventSync.ready_wait()
+                event_log.debug("PartitionDevice.wipe2 notify %s", self.name)
+                self.format.eventSync.notify()
+                self.format.eventSync.reset()
 
     def _computeResize(self, partition, newsize=None):
         """ Return a new constraint and end-aligned geometry for new size.
@@ -647,7 +669,21 @@ class PartitionDevice(StorageDevice):
                                         start=geometry.start,
                                         end=geometry.end)
 
-        self.disk.format.commit()
+        event_sync = self.modifySync
+        event_sync.resizing = True
+        timeout = None
+        try:
+            self.disk.format.commit()
+        except Exception:
+            timeout = 2
+            raise
+        finally:
+            event_log.debug("PartitionDevice.resize wait %s", self.name)
+            event_sync.ready_wait(timeout=timeout)
+            event_log.debug("PartitionDevice.resize notify %s", self.name)
+            event_sync.notify()
+            event_sync.reset()
+
         self.updateSize()
 
     def _preDestroy(self):

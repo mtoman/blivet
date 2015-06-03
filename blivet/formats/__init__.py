@@ -35,11 +35,12 @@ from ..storage_log import log_method_call
 from ..errors import DeviceFormatError, FormatCreateError, FormatDestroyError, FormatSetupError
 from ..i18n import N_
 from ..size import Size
-from ..synchronizer import OpEventSync
+from ..synchronizer import OpEventSync, KEY_ABSENT, KEY_PRESENT
 from ..threads import SynchronizedMeta
 
 import logging
 log = logging.getLogger("blivet")
+event_log = logging.getLogger("blivet.event")
 
 device_formats = {}
 def register_device_format(fmt_class):
@@ -337,6 +338,10 @@ class DeviceFormat(ObjectID):
                                (not os.path.exists(self.device) or
                                 not stat.S_ISBLK(os.stat(self.device).st_mode)))
 
+    @property
+    def createGeneratesEvent(self):
+        return self.__class__._create != DeviceFormat._create
+
     def create(self, **kwargs):
         """ Write the formatting to the specified block device.
 
@@ -353,8 +358,20 @@ class DeviceFormat(ObjectID):
         log_method_call(self, device=self.device,
                         type=self.type, status=self.status)
         self._preCreate(**kwargs)
-        self._create(**kwargs)
+        try:
+            self._create(**kwargs)
+        except Exception:
+            if self.createGeneratesEvent:
+                self.eventSync.ready_wait(timeout=2)
+                self.eventSync.notify()
+                self.eventSync.reset()
+            raise
         self._postCreate(**kwargs)
+
+    def _setCreateEventInfo(self):
+        """ Specify requirements for udev info to confirm success. """
+        self.eventSync.update_requirements(ID_FS_TYPE=self._udevTypes[0],
+                                           ID_FS_UUID=KEY_PRESENT)
 
     def _preCreate(self, **kwargs):
         """ Perform checks and setup prior to creating the format. """
@@ -374,24 +391,58 @@ class DeviceFormat(ObjectID):
 
     # pylint: disable=unused-argument
     def _create(self, **kwargs):
-        """ Type-specific create method. """
-        pass
+        """ Type-specific create method.
+
+            All this version does is set up event synchronization. Subclasses
+            should either call this when overriding it or set up the event
+            synchronizer themselves.
+        """
+        if self.createGeneratesEvent:
+            self.updateSyncPassthrough()
+            self._setCreateEventInfo()
+            self.eventSync.creating = True
 
     # pylint: disable=unused-argument
     def _postCreate(self, **kwargs):
+        if self.createGeneratesEvent:
+            event_log.debug("DeviceFormat.create wait %s", self.device)
+            self.eventSync.ready_wait()
+            event_log.debug("DeviceFormat.create notify %s", self.device)
+            self.eventSync.notify()
+            self.eventSync.reset()
+
         self.exists = True
+
+    @property
+    def destroyGeneratesEvent(self):
+        return True
 
     def destroy(self, **kwargs):
         """ Remove the formatting from the associated block device.
 
+            :keyword bool notify: whether to ensure the operation via udev
             :raises: FormatDestroyError
             :returns: None.
         """
+        # pylint: disable=unused-argument
         log_method_call(self, device=self.device,
                         type=self.type, status=self.status)
         self._preDestroy(**kwargs)
-        self._destroy(**kwargs)
+        try:
+            self._destroy()
+        except Exception:
+            if self.destroyGeneratesEvent:
+                self.eventSync.ready_wait(timeout=2)
+                self.eventSync.notify()
+                self.eventSync.reset()
+            raise
+
         self._postDestroy(**kwargs)
+
+    def _setDestroyEventInfo(self):
+        """ Specify requirements for udev info to confirm success. """
+        self.eventSync.update_requirements(ID_FS_TYPE=KEY_ABSENT,
+                                           ID_FS_UUID=KEY_ABSENT)
 
     # pylint: disable=unused-argument
     def _preDestroy(self, **kwargs):
@@ -420,10 +471,24 @@ class DeviceFormat(ObjectID):
             raise FormatDestroyError(msg)
 
     def _destroy(self, **kwargs):
+        notify = kwargs.pop("notify", True)
+        if notify and self.destroyGeneratesEvent:
+            self.updateSyncPassthrough()
+            self._setDestroyEventInfo()
+            self.eventSync.destroying = True
+
         self.wipe()
 
     def _postDestroy(self, **kwargs):
+        notify = kwargs.pop("notify", True)
+        if notify and self.destroyGeneratesEvent:
+            event_log.debug("DeviceFormat.destroy wait %s", self.device)
+            self.eventSync.ready_wait()
         self.exists = False
+        if notify and self.destroyGeneratesEvent:
+            event_log.debug("DeviceFormat.destroy notify %s", self.device)
+            self.eventSync.notify()
+            self.eventSync.reset()
 
     @property
     def destroyable(self):

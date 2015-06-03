@@ -20,13 +20,16 @@
 # Red Hat Author(s): Dave Lehman <dlehman@redhat.com>
 #
 
+import os
+from parted import PARTITION_PREP
+
 from ..size import Size
 from .. import platform
 from .. import util
 from ..i18n import N_
 from . import DeviceFormat, register_device_format
-from parted import PARTITION_PREP
-import os
+from ..synchronizer import KEY_ABSENT
+
 import logging
 log = logging.getLogger("blivet")
 
@@ -57,18 +60,10 @@ class PPCPRePBoot(DeviceFormat):
         """
         DeviceFormat.__init__(self, **kwargs)
 
+    def _setCreateEventInfo(self):
+        self.eventSync.update_requirements(ID_FS_TYPE=KEY_ABSENT)
+
     def _create(self, **kwargs):
-        """ Write the formatting to the specified block device.
-
-            :keyword device: path to device node
-            :type device: str
-            :returns: None.
-
-            .. :note::
-
-                If a device node path is passed to this method it will overwrite
-                any previously set value of this instance's "device" attribute.
-        """
         super(PPCPRePBoot, self)._create(**kwargs)
         try:
             fd = util.eintr_retry_call(os.open, self.device, os.O_RDWR)
