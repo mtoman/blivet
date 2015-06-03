@@ -42,6 +42,7 @@ class ActionList(object):
     def __init__(self):
         self._actions = []
         self._completed_actions = []
+        self._processing = False
 
     def __iter__(self):
         return iter(self._actions)
@@ -270,6 +271,10 @@ class ActionList(object):
         devices = [a.name for a in active if any(d in disks for d in a.disks)]
         return devices
 
+    @property
+    def processing(self):
+        return self._processing
+
     def process(self, callbacks=None, devices=None, dryRun=None):
         """
         Execute all registered actions.
@@ -279,6 +284,18 @@ class ActionList(object):
         :type callbacks: :class:`~.callbacks.DoItCallbacks`
 
         """
+        if self.processing is True:
+            raise RuntimeError("action queue processing already under way")
+
+        with blivet_lock:
+            self._processing = True
+        try:
+            self._process(callbacks=callbacks, devices=devices, dryRun=dryRun)
+        finally:
+            with blivet_lock:
+                self._processing = False
+
+    def _process(self, callbacks=None, devices=None, dryRun=None):
         devices = devices or []
         self._preProcess(devices=devices)
 
