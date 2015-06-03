@@ -191,3 +191,10 @@ class ContainerDevice(StorageDevice):
 
     def updateSize(self, newsize=None):
         pass
+
+    def _postCreate(self):
+        super(ContainerDevice, self)._postCreate()
+        for parent in self.parents:
+            # Make sure md and btrfs member formats are marked as existing since
+            # they have no format.create method.
+            parent.format.exists = True

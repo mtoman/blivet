@@ -432,6 +432,13 @@ class MDRaidArrayDevice(ContainerDevice, RaidDevice):
 
         blockdev.md.activate(self.path, members=disks, uuid=self.mdadmFormatUUID)
 
+    def _preTeardown(self, recursive=False):
+        super(MDRaidArrayDevice, self)._preTeardown(recursive=recursive)
+        # We don't really care what the array's state is. If the device
+        # file exists, we want to deactivate it. mdraid has too many
+        # states.
+        return self.exists and os.path.exists(self.path)
+
     def _postTeardown(self, recursive=False):
         super(MDRaidArrayDevice, self)._postTeardown(recursive=recursive)
         # mdadm reuses minors indiscriminantly when there is no mdadm.conf, so
@@ -439,21 +446,8 @@ class MDRaidArrayDevice(ContainerDevice, RaidDevice):
         # give valid results
         self.sysfsPath = ''
 
-    def teardown(self, recursive=None):
-        """ Close, or tear down, a device. """
-        log_method_call(self, self.name, status=self.status,
-                        controllable=self.controllable)
-        # we don't really care about the return value of _preTeardown here.
-        # see comment just above md_deactivate call
-        self._preTeardown(recursive=recursive)
-
-        # We don't really care what the array's state is. If the device
-        # file exists, we want to deactivate it. mdraid has too many
-        # states.
-        if self.exists and os.path.exists(self.path):
-            blockdev.md.deactivate(self.path)
-
-        self._postTeardown(recursive=recursive)
+    def _teardown(self, recursive=None):
+        blockdev.md.deactivate(self.path)
 
     def preCommitFixup(self, *args, **kwargs):
         """ Determine create parameters for this set """

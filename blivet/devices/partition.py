@@ -579,6 +579,7 @@ class PartitionDevice(StorageDevice):
             raise
 
     def _postCreate(self):
+        super(PartitionDevice, self)._postCreate()
         if self.isExtended:
             partition = self.disk.format.extendedPartition
         else:
@@ -592,8 +593,6 @@ class PartitionDevice(StorageDevice):
             # Ensure old metadata which lived in freespace so did not get
             # explictly destroyed by a destroyformat action gets wiped
             self.format.wipe()
-
-        StorageDevice._postCreate(self)
 
     def _computeResize(self, partition, newsize=None):
         """ Return a new constraint and end-aligned geometry for new size.
