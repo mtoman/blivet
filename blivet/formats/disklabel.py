@@ -314,8 +314,6 @@ class DiskLabel(DeviceFormat):
         except parted.DiskException as msg:
             timeout = 2
             raise DiskLabelCommitError(msg)
-        else:
-            self.updateOrigPartedDisk()
         finally:
             if not flags.uevents:
                 udev.settle()
@@ -323,6 +321,8 @@ class DiskLabel(DeviceFormat):
                 self.eventSync.ready_wait(timeout=timeout)
                 self.eventSync.notify()
                 self.eventSync.reset()
+
+        self.updateOrigPartedDisk()
 
     def commitToDisk(self):
         """ Commit the current partition table to disk. """
@@ -335,14 +335,14 @@ class DiskLabel(DeviceFormat):
         except parted.DiskException as msg:
             timeout = 2
             raise DiskLabelCommitError(msg)
-        else:
-            self.updateOrigPartedDisk()
         finally:
             if not flags.uevents:
                 udev.settle()
             self.eventSync.ready_wait(timeout=timeout)
             self.eventSync.notify()
             self.eventSync.reset()
+
+        self.updateOrigPartedDisk()
 
     def addPartition(self, start, end, ptype=None):
         """ Add a partition to the disklabel.
