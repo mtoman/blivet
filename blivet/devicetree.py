@@ -239,7 +239,7 @@ class DeviceTree(object):
                                                            dev.name,
                                                            dev.id)
 
-    def recursiveRemove(self, device, actions=True):
+    def recursiveRemove(self, device, actions=True, modparent=True):
         """ Remove a device after removing its dependent devices.
 
             :param :class:`~.devices.StorageDevice` device: the device to remove
@@ -274,7 +274,7 @@ class DeviceTree(object):
                 else:
                     if not leaf.formatImmutable:
                         leaf.format = None
-                    self._removeDevice(leaf)
+                    self._removeDevice(leaf, modparent=modparent)
 
                 devices.remove(leaf)
 
@@ -288,7 +288,7 @@ class DeviceTree(object):
             if actions:
                 self.registerAction(ActionDestroyDevice(device))
             else:
-                self._removeDevice(device)
+                self._removeDevice(device, modparent=modparent)
 
     def registerAction(self, action):
         """ Register an action to be performed at a later time.
