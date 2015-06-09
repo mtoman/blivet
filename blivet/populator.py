@@ -1146,6 +1146,11 @@ class Populator(object):
             md_array.parents.append(device)
             self.devicetree._addDevice(md_array)
 
+            # do format handling now to keep things consistent
+            array_info = udev.get_device(md_array.sysfsPath)
+            self.handleUdevDeviceFormat(array_info, md_array)
+            md_array.originalFormat = copy.copy(md_array.format)
+
     def handleUdevDMRaidMemberFormat(self, info, device):
         # if dmraid usage is disabled skip any dmraid set activation
         if not flags.dmraid:
