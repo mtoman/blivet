@@ -403,6 +403,10 @@ class EventHandler(object):
         if expected:
             return
 
+        # XXX temporary
+        log.warning("got an unexpected event")
+        return
+
         if reformatted:
             log.info("%s was reformatted from outside of blivet", device.name)
             self.devicetree.cancelDiskActions(device.disks)
