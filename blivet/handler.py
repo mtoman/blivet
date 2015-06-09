@@ -214,7 +214,7 @@ class EventHandler(object):
         container_uuid = self._getContainerUUID(info, device)
 
         old_container_uuid = device.format.containerUUID
-        container_changed = (old_container_uuid != container_uuid)
+        container_changed = (old_container_uuid and old_container_uuid != container_uuid)
         if container_changed:
             self.devicetree.cancelDiskActions(device.disks)
 
