@@ -1003,7 +1003,8 @@ class Populator(object):
                         return
 
                     # do format handling now
-                    self.addUdevDevice(lv_info)
+                    self.handleUdevDeviceFormat(lv_info, lv_device)
+                    lv_device.originalFormat = copy.copy(lv_device.format)
 
         raid_items = dict((n.replace("[", "").replace("]", ""),
                      {"copies": 0, "log": Size(0), "meta": Size(0)})
