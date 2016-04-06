@@ -1,0 +1,7 @@
+[Unit]
+Description=Blivet Service
+
+[Service]
+Type=dbus
+BusName=org.blivet.Blivet
+ExecStart=/usr/libexec/blivetd
