@@ -111,6 +111,9 @@ class DBusBlivet(DBusObject):
         self._dbus_actions[added.object_path] = added
         self._manager.add_object(added)
 
+    def _list_devices(self, removed=False):
+        return [d for d in self._dbus_devices.values() if removed or not d.removed]
+
     @dbus.service.method(dbus_interface=BLIVET_INTERFACE)
     def Reset(self):
         """ Reset the Blivet instance and populate the device tree. """
@@ -128,7 +131,7 @@ class DBusBlivet(DBusObject):
     @dbus.service.method(dbus_interface=BLIVET_INTERFACE, out_signature='ao')
     def ListDevices(self):
         """ Return a list of strings describing the devices in this system. """
-        return dbus.Array(list(self._dbus_devices.keys()), signature='o')
+        return dbus.Array((d.object_path for d in self._list_devices()), signature='o')
 
     @dbus.service.method(dbus_interface=BLIVET_INTERFACE, in_signature='s', out_signature='o')
     def ResolveDevice(self, spec):
