@@ -17,6 +17,8 @@
 #
 # Red Hat Author(s): David Lehman <dlehman@redhat.com>
 #
+from collections import OrderedDict
+
 import dbus
 
 from .constants import BUS_NAME, OBJECT_MANAGER_INTERFACE, OBJECT_MANAGER_PATH
@@ -31,6 +33,7 @@ class ObjectManager(dbus.service.Object):
     """
     def __init__(self):
         self._objects = list()
+        self._by_id = OrderedDict()
         super().__init__(bus_name=dbus.service.BusName(BUS_NAME, dbus.SystemBus()),
                          object_path=OBJECT_MANAGER_PATH)
 
@@ -40,11 +43,18 @@ class ObjectManager(dbus.service.Object):
 
     def remove_object(self, obj):
         self._objects.remove(obj)
+        if hasattr(obj, "id"):
+            del self._by_id[obj.id]
         self.InterfacesRemoved(obj.object_path, obj.interface)
 
     def add_object(self, obj):
         self._objects.append(obj)
+        if hasattr(obj, "id"):
+            self._by_id[obj.id] = obj
         self.InterfacesAdded(obj.object_path, {obj.interface: obj.properties})
+
+    def get_object_by_id(self, obj_id):
+        return self._by_id.get(obj_id)
 
     @dbus.service.signal(dbus_interface=OBJECT_MANAGER_INTERFACE, signature='oa{sa{sv}}')
     def InterfacesAdded(self, object_path, ifaces_props_dict):
