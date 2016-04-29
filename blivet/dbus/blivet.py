@@ -39,12 +39,12 @@ class DBusBlivet(DBusObject):
         state.
     """
     def __init__(self, manager):
-        super().__init__()
+        super().__init__(manager)
         self._dbus_actions = OrderedDict()
         self._dbus_devices = OrderedDict()
         self._dbus_formats = OrderedDict()
-        self._manager = manager  # provides ObjectManager interface
         self._blivet = Blivet()
+        self._manager.add_object(self)
         self._set_up_callbacks()
         self._id = ObjectID().id
 
@@ -76,41 +76,38 @@ class DBusBlivet(DBusObject):
 
     def _device_removed(self, device):
         """ Update ObjectManager interface after a device is removed. """
-        removed_object_path = DBusDevice.get_object_path_by_id(device.id)
-        removed = self._dbus_devices[removed_object_path]
-        fmt_object_path = DBusFormat.get_object_path_by_id(device.format.id)
+        removed = self._manager.get_object_by_id(device.id)
         # Make sure the format gets removed in case the device was removed w/o
         # removing the format first.
-        if fmt_object_path in self._dbus_formats:
+        removed_fmt = self._manager.get_object_by_id(device.format.id)
+        if removed_fmt.object_path in self._dbus_formats:
             self._format_removed(device.format)
         self._manager.remove_object(removed)
-        del self._dbus_devices[removed_object_path]
+        del self._dbus_devices[removed.object_path]
 
     def _device_added(self, device):
         """ Update ObjectManager interface after a device is added. """
-        added = DBusDevice(device)
+        added = DBusDevice(device, self._manager)
         self._dbus_devices[added.object_path] = added
         self._manager.add_object(added)
 
     def _format_removed(self, fmt):
-        removed_object_path = DBusFormat.get_object_path_by_id(fmt.id)
-        removed = self._dbus_formats[removed_object_path]
+        removed = self._manager.get_object_by_id(fmt.id)
         self._manager.remove_object(removed)
-        del self._dbus_formats[removed_object_path]
+        del self._dbus_formats[removed.object_path]
 
     def _format_added(self, fmt):
-        added = DBusFormat(fmt)
+        added = DBusFormat(fmt, self._manager)
         self._dbus_formats[added.object_path] = added
         self._manager.add_object(added)
 
     def _action_removed(self, action):
-        removed_object_path = DBusAction.get_object_path_by_id(action.id)
-        removed = self._dbus_actions[removed_object_path]
+        removed = self._manager.get_object_by_id(action.id)
         self._manager.remove_object(removed)
-        del self._dbus_actions[removed_object_path]
+        del self._dbus_actions[removed.object_path]
 
     def _action_added(self, action):
-        added = DBusAction(action)
+        added = DBusAction(action, self._manager)
         self._dbus_actions[added.object_path] = added
         self._manager.add_object(added)
 
@@ -137,7 +134,6 @@ class DBusBlivet(DBusObject):
     def ResolveDevice(self, spec):
         """ Return a string describing the device the given specifier resolves to. """
         device = self._blivet.devicetree.resolve_device(spec)
-        object_path = ""
         if device is None:
             raise dbus.exceptions.DBusException('%s.DeviceLookupFailed' % BUS_NAME,
                                                 'No device was found that matches the device '
