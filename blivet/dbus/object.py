@@ -30,6 +30,7 @@ class DBusObject(dbus.service.Object):
         # pylint: disable=super-init-not-called
         self._init_dbus_object()
         self._manager = manager  # provides ObjectManager interface
+        self._present = True
 
     # This is here to make it easier to prevent the dbus.service.Object
     # constructor from running during unit testing.
@@ -37,6 +38,16 @@ class DBusObject(dbus.service.Object):
         """ Initialize superclass. """
         super().__init__(bus_name=dbus.service.BusName(BUS_NAME, dbus.SystemBus()),
                          object_path=self.object_path)
+
+    def set_presence(self, state):
+        conn = self.connection
+        self.remove_from_connection()
+        self._present = state
+        self.add_to_connection(conn, self.object_path)
+
+    def remove_from_connection(self, connection=None, path=None):
+        super().remove_from_connection(connection=connection, path=path)
+        self._object_path = None
 
     @property
     def id(self):
