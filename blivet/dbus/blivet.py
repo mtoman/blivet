@@ -40,13 +40,13 @@ class DBusBlivet(DBusObject):
     """
     def __init__(self, manager):
         super().__init__(manager)
-        self._dbus_actions = OrderedDict()
-        self._dbus_devices = OrderedDict()
-        self._dbus_formats = OrderedDict()
+        self._dbus_actions = OrderedDict()  # id -> DBusAction
+        self._dbus_devices = OrderedDict()  # id -> DBusDevice
+        self._dbus_formats = OrderedDict()  # id -> DBusFormat
         self._blivet = Blivet()
+        self._id = ObjectID().id
         self._manager.add_object(self)
         self._set_up_callbacks()
-        self._id = ObjectID().id
 
     def _set_up_callbacks(self):
         callbacks.device_added.add(self._device_added)
@@ -83,36 +83,53 @@ class DBusBlivet(DBusObject):
         if removed_fmt.object_path in self._dbus_formats:
             self._format_removed(device.format)
         self._manager.remove_object(removed)
-        del self._dbus_devices[removed.object_path]
+        del self._dbus_devices[device.id]
 
     def _device_added(self, device):
         """ Update ObjectManager interface after a device is added. """
         added = DBusDevice(device, self._manager)
-        self._dbus_devices[added.object_path] = added
+        self._dbus_devices[added.id] = added
         self._manager.add_object(added)
 
     def _format_removed(self, fmt):
         removed = self._manager.get_object_by_id(fmt.id)
+        # We have to remove the object either way since its path will change.
         self._manager.remove_object(removed)
-        del self._dbus_formats[removed.object_path]
+        del self._dbus_formats[fmt.id]
 
     def _format_added(self, fmt):
         added = DBusFormat(fmt, self._manager)
-        self._dbus_formats[added.object_path] = added
+        self._dbus_formats[added.id] = added
         self._manager.add_object(added)
 
     def _action_removed(self, action):
         removed = self._manager.get_object_by_id(action.id)
         self._manager.remove_object(removed)
-        del self._dbus_actions[removed.object_path]
+        del self._dbus_actions[removed.id]
 
     def _action_added(self, action):
         added = DBusAction(action, self._manager)
-        self._dbus_actions[added.object_path] = added
+        self._dbus_actions[added.id] = added
         self._manager.add_object(added)
 
     def _list_devices(self, removed=False):
         return [d for d in self._dbus_devices.values() if removed or not d.removed]
+
+    def get_device_by_object_path(self, object_path, removed=False):
+        """ Return the StorageDevice corresponding to an object path. """
+        dbus_device = next((d for d in self._dbus_devices.values() if d.object_path == object_path),
+                           None)
+        if dbus_device is None:
+            raise dbus.exceptions.DBusException('%s.DeviceNotFound' % BUS_NAME,
+                                                'No device found with object path "%s".'
+                                                % object_path)
+
+        if dbus_device.removed and not removed:
+            raise dbus.exceptions.DBusException('%s.DeviceNotFound' % BUS_NAME,
+                                                'Device with object path "%s" has already been '
+                                                'removed.' % object_path)
+
+        return dbus_device._device
 
     @dbus.service.method(dbus_interface=BLIVET_INTERFACE)
     def Reset(self):
@@ -148,12 +165,12 @@ class DBusBlivet(DBusObject):
     @dbus.service.method(dbus_interface=BLIVET_INTERFACE, in_signature='o')
     def RemoveDevice(self, object_path):
         """ Remove a device and all devices built on it. """
-        dbus_device = self._dbus_devices[object_path]
-        self._blivet.devicetree.recursive_remove(dbus_device._device)
+        device = self.get_device_by_object_path(object_path)
+        self._blivet.devicetree.recursive_remove(device)
 
     @dbus.service.method(dbus_interface=BLIVET_INTERFACE, in_signature='o')
     def InitializeDisk(self, object_path):
         """ Clear a disk and create a disklabel on it. """
-        dbus_device = self._dbus_devices[object_path]
         self.RemoveDevice(object_path)
-        self._blivet.initialize_disk(dbus_device._device)
+        device = self.get_device_by_object_path(object_path)
+        self._blivet.initialize_disk(device)
