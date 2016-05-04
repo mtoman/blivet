@@ -72,6 +72,12 @@ class DBusBlivetTestCase(TestCase):
         self.dbus_object._blivet.initialize_disk.assert_called_once_with(device_mock._device)
         self.dbus_object._blivet.reset_mock()
 
+    def test_Commit(self):
+        self.dbus_object._blivet.reset_mock()
+        self.dbus_object.Commit()
+        self.dbus_object._blivet.do_it.assert_called_once_with()
+        self.dbus_object._blivet.reset_mock()
+
 
 @patch.object(DBusObject, 'connection')
 class DBusObjectTestCase(TestCase):

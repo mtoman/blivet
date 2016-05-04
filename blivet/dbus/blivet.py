@@ -200,3 +200,8 @@ class DBusBlivet(DBusObject):
         self.RemoveDevice(object_path)
         device = self.get_device_by_object_path(object_path)
         self._blivet.initialize_disk(device)
+
+    @dbus.service.method(dbus_interface=BLIVET_INTERFACE)
+    def Commit(self):
+        """ Commit pending changes to disk. """
+        self._blivet.do_it()
