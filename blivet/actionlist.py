@@ -334,6 +334,12 @@ class ActionList(object, metaclass=SynchronizedMeta):
                 for device in devices:
                     # make sure we catch any renumbering parted does
                     if device.exists and isinstance(device, PartitionDevice):
+                        # also update existence for partitions on unsupported disklabels
+                        if not device.disklabel_supported and \
+                           action.is_destroy and action.is_format and action.device == device.disk:
+                            device.exists = False
+                            continue
+
                         device.update_name()
                         device.format.device = device.path
 
