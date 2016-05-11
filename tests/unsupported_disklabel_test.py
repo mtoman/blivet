@@ -11,6 +11,7 @@ from blivet.devices import LVMLogicalVolumeDevice
 from blivet.devices import LVMVolumeGroupDevice
 from blivet.devices import PartitionDevice
 from blivet.devicetree import DeviceTree
+from blivet.flags import flags
 from blivet.formats import get_format
 from blivet.size import Size
 
@@ -57,6 +58,12 @@ class UnsupportedDiskLabelTestCase(unittest.TestCase):
         self.assertIsNone(self.partition2.parted_partition)
         self.assertFalse(self.partition1.is_magic)
         self.assertFalse(self.partition2.is_magic)
+        self.assertTrue(self.disk1.supported)
+        self.assertTrue(self.disk2.supported)
+        self.assertFalse(self.partition1.supported)
+        self.assertFalse(self.partition2.supported)
+        self.assertFalse(self.vg.supported)
+        self.assertFalse(self.lv.supported)
 
         # Verify that probe returns without changing anything.
         partition1_type = sentinel.partition1_type
@@ -142,6 +149,42 @@ class UnsupportedDiskLabelTestCase(unittest.TestCase):
             self.assertFalse(self.partition2 in devicetree.devices)
             self.assertFalse(self.vg in devicetree.devices)
             self.assertFalse(self.lv in devicetree.devices)
+
+    def test_hide_unsupported_devices_flag(self):
+        flags.hide_unsupported_devices = True
+
+        devicetree = DeviceTree()
+        devicetree._add_device(self.disk1)
+        devicetree._add_device(self.partition1)
+        devicetree._add_device(self.partition2)
+        devicetree._add_device(self.disk2)
+        devicetree._add_device(self.vg)
+        devicetree._add_device(self.lv)
+
+        # With flags.hide_unsupported_devices the disk should still be visible
+        # but none of the other devices built on it should.
+        self.assertIn(self.disk1, devicetree.devices)
+        self.assertNotIn(self.partition1, devicetree.devices)
+        self.assertNotIn(self.lv, devicetree.devices)
+        self.assertEqual(devicetree.get_device_by_name(self.disk1.name), self.disk1)
+        self.assertIsNone(devicetree.get_device_by_name(self.partition1.name))
+        self.assertIsNone(devicetree.get_device_by_name(self.partition1.name, hidden=True))
+        self.assertIsNone(devicetree.get_device_by_name(self.lv.name, hidden=True))
+        self.assertIsNone(devicetree.get_device_by_path(self.lv.path, hidden=True))
+        self.assertIsNone(devicetree.get_device_by_id(self.partition2.id, hidden=True, incomplete=True))
+        self.assertEqual(len(devicetree.get_dependent_devices(self.disk1)), 0)
+        self.assertTrue(self.vg in self.partition2.children)  # flag doesn't affect children or parents
+        self.assertTrue(self.partition2 in self.disk1.children)
+        # recursive_remove should find the descendants even though the above queries fail
+        with patch('blivet.devicetree.ActionDestroyFormat.apply'):
+            devicetree.recursive_remove(self.disk1)
+            self.assertTrue(self.disk1 in devicetree._devices)
+            self.assertFalse(self.partition1 in devicetree._devices)
+            self.assertFalse(self.partition2 in devicetree._devices)
+            self.assertFalse(self.vg in devicetree._devices)
+            self.assertFalse(self.lv in devicetree._devices)
+
+        flags.hide_unsupported_devices = False
 
     def test_initialize_disk(self):
         """ Test Blivet.initialize_disk with an unsupported disklabel. """

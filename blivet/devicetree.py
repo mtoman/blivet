@@ -39,6 +39,7 @@ from .devicelibs import lvm
 from .events.changes import record_change
 from .events.changes import AttributeChanged, DeviceAdded, DeviceRemoved
 from .events.handler import EventHandlerMixin
+from .flags import flags
 from . import util
 from .populator import PopulatorMixin
 from .storage_log import log_method_call, log_method_return
@@ -124,6 +125,9 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
         devices = []
         for device in self._devices:
             if not getattr(device, "complete", True):
+                continue
+
+            if flags.hide_unsupported_devices and not device.supported:
                 continue
 
             if device.uuid and device.uuid in [d.uuid for d in devices] and \
@@ -224,7 +228,12 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
             disk device.
         """
         log.debug("removing %s", device.name)
-        devices = self.get_dependent_devices(device)
+        devices = self.get_dependent_devices(device, hidden=True)
+
+        # get_dependent_devices may have hidden unsupported descendants from us. Add them.
+        if flags.hide_unsupported_devices:
+            devices.extend(d for d in self.devices if d.depends_on(device) and not d.supported)
+            devices.sort(key=lambda d: d.path)
 
         # this isn't strictly necessary, but it makes the action list easier to
         # read when removing logical partitions because of the automatic
@@ -370,6 +379,9 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
             if device.depends_on(dep):
                 dependents.append(device)
 
+        if flags.hide_unsupported_devices and not hidden:
+            dependents = [d for d in dependents if d.supported]
+
         return dependents
 
     def get_related_disks(self, disk):
@@ -445,6 +457,10 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
 
         if not incomplete:
             devices = (d for d in devices if getattr(d, "complete", True))
+
+        if flags.hide_unsupported_devices:
+            devices = (d for d in devices if d.supported)
+
         return devices
 
     def get_device_by_sysfs_path(self, path, incomplete=False, hidden=False):
@@ -719,7 +735,8 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
     @property
     def leaves(self):
         """ List of all devices upon which no other devices exist. """
-        leaves = [d for d in self._devices if d.isleaf]
+        leaves = [d for d in self._devices
+                  if d.isleaf and (d.supported or not flags.hide_unsupported_devices)]
         return leaves
 
     @property
@@ -736,7 +753,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
     def uuids(self):
         """ Dict with uuid keys and :class:`~.devices.Device` values. """
         uuids = {}
-        for dev in self._devices:
+        for dev in (d for d in self._devices if d.supported or not flags.hide_unsupported_devices):
             try:
                 uuid = dev.uuid
             except AttributeError:
@@ -762,7 +779,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
             FIXME: duplicate labels are a possibility
         """
         labels = {}
-        for dev in self._devices:
+        for dev in (d for d in self._devices if d.supported or not flags.hide_unsupported_devices):
             # don't include btrfs member devices
             if getattr(dev.format, "label", None) and \
                (dev.format.type != "btrfs" or isinstance(dev, BTRFSDevice)):

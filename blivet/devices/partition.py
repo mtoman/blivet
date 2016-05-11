@@ -427,6 +427,10 @@ class PartitionDevice(StorageDevice):
         """ Is this device directly accessible? """
         return self.isleaf and not self.is_extended
 
+    @property
+    def supported(self):
+        return self.disklabel_supported and super().supported
+
     def _set_bootable(self, bootable):
         """ Set the bootable flag for this partition. """
         if self.parted_partition:

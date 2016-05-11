@@ -128,6 +128,7 @@ def enable_installer_mode():
     util.program_log_lock = program_log_lock
 
     flags.installer_mode = True
+    flags.hide_unsupported_devices = True
 
 
 def get_sysroot():

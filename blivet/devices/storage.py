@@ -789,6 +789,10 @@ class StorageDevice(Device):
         return self.format.type == "disklabel" and self.partitionable
 
     @property
+    def supported(self):
+        return all(p.supported for p in self.parents)
+
+    @property
     def serial(self):
         return self._serial
 

@@ -649,6 +649,7 @@ class Blivet(object, metaclass=SynchronizedMeta):
             :returns None:
             :raises: ValueError
         """
+        disk_format_removed = False
         # first, remove magic mac/sun partitions from the parted Disk
         if disk.partitioned:
             magic = disk.format.magic_partition_number
@@ -666,10 +667,25 @@ class Blivet(object, metaclass=SynchronizedMeta):
 
             if len(disk.format.partitions) > expected:
                 raise ValueError("cannot initialize a disk that has partitions")
+        else:
+            # A disk with an unsupported or broken disklabel may still have partitions
+            # recognized by the kernel. The only way to remove these partitions is to
+            # wipe the disklabel completely, which is what's happening here. In the
+            # case of anaconda, we don't even show the partitions on such disks. That
+            # means we have to quietly remove them here.
+            partitions = self.partitions
+            # We have already established that this disk does not contain a valid disklabel.
+            unsupported_disklabel = (bool(disk.children) and
+                                     all(c in partitions and not c.disklabel_supported
+                                         for c in disk.children))
+            if unsupported_disklabel:
+                self.devicetree.recursive_remove(disk)
+                disk_format_removed = True
 
-        # remove existing formatting from the disk
-        destroy_action = ActionDestroyFormat(disk)
-        self.devicetree.actions.add(destroy_action)
+        if not disk_format_removed:
+            # remove existing formatting from the disk
+            destroy_action = ActionDestroyFormat(disk)
+            self.devicetree.actions.add(destroy_action)
 
         label_type = _platform.best_disklabel_type(disk)
 
