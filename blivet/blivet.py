@@ -618,7 +618,8 @@ class Blivet(object, metaclass=SynchronizedMeta):
                 continue
 
             self.recursive_remove(part)
-            log.debug("partitions: %s", [p.getDeviceNodeName() for p in part.parted_partition.disk.partitions])
+            if part.parted_partition:
+                log.debug("partitions: %s", [p.getDeviceNodeName() for p in part.parted_partition.disk.partitions])
 
         # now remove any empty extended partitions
         self.remove_empty_extended_partitions()

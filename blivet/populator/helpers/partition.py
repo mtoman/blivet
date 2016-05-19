@@ -50,7 +50,7 @@ class PartitionDevicePopulator(DevicePopulator):
 
         if name.startswith("md"):
             name = blockdev.md.name_from_node(name)
-            device = self._devicetree.get_device_by_name(name)
+            device = self._devicetree.get_device_by_name(name, unsupported=True)
             if device:
                 return device
 

@@ -332,7 +332,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
     #
     def teardown_all(self):
         """ Run teardown methods on all devices. """
-        for device in self.leaves:
+        for device in (d for d in self._devices + self._hidden if d.isleaf):
             if device.protected:
                 continue
 
@@ -441,7 +441,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
     #
     # Device search by property
     #
-    def _filter_devices(self, incomplete=False, hidden=False):
+    def _filter_devices(self, incomplete=False, hidden=False, unsupported=False):
         """ Return list of devices modified according to parameters.
 
             :param bool incomplete: include incomplete devices in result
@@ -458,7 +458,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
         if not incomplete:
             devices = (d for d in devices if getattr(d, "complete", True))
 
-        if flags.hide_unsupported_devices:
+        if flags.hide_unsupported_devices and not unsupported:
             devices = (d for d in devices if d.supported)
 
         return devices
@@ -480,7 +480,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
         log_method_return(self, result)
         return result
 
-    def get_device_by_uuid(self, uuid, incomplete=False, hidden=False):
+    def get_device_by_uuid(self, uuid, incomplete=False, hidden=False, unsupported=False):
         """ Return a list of devices with a matching UUID.
 
             :param str uuid: the UUID to match
@@ -492,7 +492,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
         log_method_call(self, uuid=uuid, incomplete=incomplete, hidden=hidden)
         result = None
         if uuid:
-            devices = self._filter_devices(incomplete=incomplete, hidden=hidden)
+            devices = self._filter_devices(incomplete=incomplete, hidden=hidden, unsupported=unsupported)
             result = next((d for d in devices if d.uuid == uuid or d.format.uuid == uuid), None)
         log_method_return(self, result)
         return result
@@ -514,7 +514,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
         log_method_return(self, result)
         return result
 
-    def get_device_by_name(self, name, incomplete=False, hidden=False):
+    def get_device_by_name(self, name, incomplete=False, hidden=False, unsupported=False):
         """ Return a device with a matching name.
 
             :param str name: the name to look for
@@ -526,7 +526,7 @@ class DeviceTreeBase(object, metaclass=SynchronizedMeta):
         log_method_call(self, name=name, incomplete=incomplete, hidden=hidden)
         result = None
         if name:
-            devices = self._filter_devices(incomplete=incomplete, hidden=hidden)
+            devices = self._filter_devices(incomplete=incomplete, hidden=hidden, unsupported=unsupported)
             result = next((d for d in devices if d.name == name or
                            (isinstance(d, _LVM_DEVICE_CLASSES) and d.name == name.replace("--", "-"))),
                           None)

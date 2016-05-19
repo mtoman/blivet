@@ -147,6 +147,7 @@ class DiskLabel(DeviceFormat):
     def parted_disk(self):
         if not self._parted_disk:
             if self.exists:
+                raise InvalidDiskLabelError("fake")
                 try:
                     self._parted_disk = parted.Disk(device=self.parted_device)
                 except (_ped.DiskLabelException, _ped.IOException,

@@ -58,7 +58,8 @@ class MDDevicePopulator(DevicePopulator):
             return None
 
         # try to get the device again now that we've got all the slaves
-        device = self._devicetree.get_device_by_name(name, incomplete=flags.allow_imperfect_devices)
+        device = self._devicetree.get_device_by_name(name, incomplete=flags.allow_imperfect_devices,
+                                                     unsupported=True)
 
         if device is None:
             try:
@@ -66,7 +67,8 @@ class MDDevicePopulator(DevicePopulator):
             except KeyError:
                 log.warning("failed to obtain uuid for mdraid device")
             else:
-                device = self._devicetree.get_device_by_uuid(uuid, incomplete=flags.allow_imperfect_devices)
+                device = self._devicetree.get_device_by_uuid(uuid, incomplete=flags.allow_imperfect_devices,
+                                                             unsupported=True)
 
         if device and name:
             # update the device instance with the real name in case we had to
@@ -118,7 +120,8 @@ class MDFormatPopulator(FormatPopulator):
         # Use mdadm info if udev info is missing
         md_uuid = md_info.uuid
         self.device.format.md_uuid = self.device.format.md_uuid or md_uuid
-        md_array = self._devicetree.get_device_by_uuid(self.device.format.md_uuid, incomplete=True)
+        md_array = self._devicetree.get_device_by_uuid(self.device.format.md_uuid, incomplete=True,
+                                                       unsupported=True)
 
         if md_array:
             md_array.parents.append(self.device)
@@ -166,7 +169,7 @@ class MDFormatPopulator(FormatPopulator):
                     md_name = md_name[2:]
 
                 if md_name:
-                    array = self._devicetree.get_device_by_name(md_name, incomplete=True)
+                    array = self._devicetree.get_device_by_name(md_name, incomplete=True, unsupported=True)
                     if array and array.uuid != md_uuid:
                         log.error("found multiple devices with the name %s", md_name)
 

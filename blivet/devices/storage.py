@@ -774,7 +774,7 @@ class StorageDevice(Device):
     @property
     def direct(self):
         """ Is this device directly accessible? """
-        return self.isleaf
+        return self.isleaf or self.format.type == "unsupported disklabel"
 
     @property
     def is_disk(self):

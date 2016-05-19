@@ -100,7 +100,7 @@ class DiskLabelFormatPopulator(FormatPopulator):
                                                     exists=True)
             # make sure format.type is not None for various purposes, including
             # Blivet.get_free_space
-            self.device.format.type = "unsuppored disklabel"
+            self.device.format._type = "unsupported disklabel"
         else:
             self.device.format = fmt
 

@@ -155,11 +155,11 @@ class PopulatorMixin(object, metaclass=SynchronizedMeta):
             if not slave_info:
                 log.warning("unable to get udev info for %s", slave_name)
 
-            slave_dev = self.get_device_by_name(slave_name)
+            slave_dev = self.get_device_by_name(slave_name, unsupported=True)
             if not slave_dev and slave_info:
                 # we haven't scanned the slave yet, so do it now
                 self.handle_device(slave_info)
-                slave_dev = self.get_device_by_name(slave_name)
+                slave_dev = self.get_device_by_name(slave_name, unsupported=True)
                 if slave_dev is None:
                     if udev.device_is_dm_lvm(info):
                         if slave_name not in lvs_info.cache:
@@ -223,7 +223,7 @@ class PopulatorMixin(object, metaclass=SynchronizedMeta):
         if md_name is None:
             log.warning("No name for possibly degraded md array.")
         else:
-            device = self.get_device_by_name(md_name, incomplete=flags.allow_imperfect_devices)
+            device = self.get_device_by_name(md_name, incomplete=flags.allow_imperfect_devices, unsupported=True)
 
         if device and not isinstance(device, MDRaidArrayDevice):
             log.warning("Found device %s, but it turns out not be an md array device after all.", device.name)
@@ -298,7 +298,7 @@ class PopulatorMixin(object, metaclass=SynchronizedMeta):
 
         # make sure we note the name of every device we see
         self._add_name(name)
-        device = self.get_device_by_name(name)
+        device = self.get_device_by_name(name, unsupported=True)
         device = self._handle_degraded_md(info, device)
         self._clear_new_multipath_member(device)
 
