@@ -674,7 +674,7 @@ class Blivet(object, metaclass=SynchronizedMeta):
             # wipe the disklabel completely, which is what's happening here. In the
             # case of anaconda, we don't even show the partitions on such disks. That
             # means we have to quietly remove them here.
-            partitions = self.partitions
+            partitions = (d for d in self.devicetree._devices if isinstance(d, PartitionDevice))
             # We have already established that this disk does not contain a valid disklabel.
             unsupported_disklabel = (bool(disk.children) and
                                      all(c in partitions and not c.disklabel_supported
