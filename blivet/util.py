@@ -1,4 +1,5 @@
 import copy
+import fcntl
 import functools
 import itertools
 import os
@@ -476,3 +477,16 @@ def variable_copy(obj, memo, omit=None, shallow=None, duplicate=None):
 def get_current_entropy():
     with open("/proc/sys/kernel/random/entropy_avail", "r") as fobj:
         return int(fobj.readline())
+
+@contextmanager
+def flock_device(device_path, flags=None):
+    flags = flags or (fcntl.LOCK_SH | fcntl.LOCK_NB)
+    f = open(device_path, 'r')
+    try:
+        fcntl.flock(f, flags)
+    except IOError:
+        log.debug("failed to lock %s", device_path)
+
+    yield
+
+    f.close()

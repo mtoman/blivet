@@ -193,7 +193,12 @@ class DiskLabel(DeviceFormat):
                 # do not always have any media present, so parted won't be able
                 # to find a device.
                 try:
-                    self._partedDevice = parted.Device(path=self.device)
+                    # try to flock the device before instantiating the parted.Device
+                    # since parted opens and then closes a rw fd, which udev sees and
+                    # run the BLKRRPART ioctl, which in turn causes device nodes to
+                    # disappear briefly amid a flood of noise uevents
+                    with util.flock_device(self.device):
+                        self._partedDevice = parted.Device(path=self.device)
                 except (_ped.IOException, _ped.DeviceException) as e:
                     log.error("DiskLabel.partedDevice: Parted exception: %s", e)
             else:
@@ -287,7 +292,8 @@ class DiskLabel(DeviceFormat):
         log_method_call(self, device=self.device,
                         numparts=len(self.partitions))
         try:
-            self.partedDisk.commit()
+            with util.flock_device(self.device):
+                self.partedDisk.commit()
         except parted.DiskException as msg:
             raise DiskLabelCommitError(msg)
         else:
@@ -299,7 +305,8 @@ class DiskLabel(DeviceFormat):
         log_method_call(self, device=self.device,
                         numparts=len(self.partitions))
         try:
-            self.partedDisk.commitToDevice()
+            with util.flock_device(self.device):
+                self.partedDisk.commitToDevice()
         except parted.DiskException as msg:
             raise DiskLabelCommitError(msg)
         else:
