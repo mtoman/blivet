@@ -577,6 +577,12 @@ class DeviceTree(object):
                 # past, so I guess we will support it forever.
                 if disk.parents and all(p.format.hidden for p in disk.parents):
                     ignored = any(self._isIgnoredDisk(d) for d in disk.parents)
+                elif disk.format.hidden:
+                    children = self.getChildren(disk)
+                    if len(children) == 1:
+                        # Similarly, if the filter allows an mpath or fwraid, we cannot
+                        # ignore the member devices.
+                        ignored = self._isIgnoredDisk(children[0])
 
                 if ignored:
                     self.hide(disk)
