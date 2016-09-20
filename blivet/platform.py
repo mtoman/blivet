@@ -421,6 +421,18 @@ class omapARM(ARM):
         else:
             return Platform.weight(self, fstype=fstype, mountpoint=mountpoint)
 
+class MIPS(Platform):
+    _mipsMachine = None
+    _boot_stage1_device_types = ["disk"]
+    _boot_mbr_description = N_("Master Boot Record")
+    _boot_descriptions = {"disk": _boot_mbr_description,
+                          "partition": Platform._boot_partition_description}
+
+    _disklabel_types = ["msdos"]
+    _boot_stage1_missing_error = N_("You must include at least one MBR-formatted "
+                                    "disk as an install target.")
+
+
 def getPlatform():
     """Check the architecture of the system and return an instance of a
        Platform subclass to match.  If the architecture could not be determined,
@@ -453,6 +465,8 @@ def getPlatform():
             return omapARM()
         else:
             return ARM()
+    elif arch.isMIPS():
+        return MIPS()
     else:
         raise SystemError("Could not determine system architecture.")
 

@@ -293,6 +293,21 @@ def isPPC(bits=None):
 
     return False
 
+def isMIPS(bits=None):
+    arch = os.uname()[4]
+
+    if bits is None:
+        if arch.startswith('mips'):
+            return True
+    elif bits == 32:
+        if arch == 'mips':
+            return True
+    elif bits == 64:
+        if arch == 'mips64':
+            return True
+
+    return False
+
 def isS390():
     """
     :return: True if the hardware supports PPC, False otherwise.
@@ -340,6 +355,10 @@ def getArch():
     elif isPPC(bits=64):
         # ppc64 and ppc64le are distinct architectures
         return os.uname()[4]
+    elif isMIPS(bits=32):
+        return 'mips'
+    elif isMIPS(bits=64):
+        return 'mips64'
     elif isAARCH64():
         return 'aarch64'
     elif isAlpha():
